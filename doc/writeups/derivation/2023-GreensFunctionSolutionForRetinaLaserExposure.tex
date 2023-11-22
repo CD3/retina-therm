@@ -1,0 +1,269 @@
+% arara: pdflatex
+% arara: pdflatex
+
+% start with vim --server latex %
+\documentclass[]{article}
+
+\usepackage{siunitx}
+\usepackage{physics}
+\usepackage{graphicx}
+\usepackage{fullpage}
+
+\author{C.D. Clark III}
+\title{A Green's Function based model for retinal temperature rise from laser exposure}
+
+\begin{document}
+\maketitle
+
+The heat equation describing heat conduction in a material with source term is
+\begin{equation*}
+    \rho c \pdv{T}{t} = \div{k\grad T} + A(\vec{r},t).
+\end{equation*}
+Here, $T\qty(\vec{r},t)$ is the temperature field and $A\qty(\vec{r},t)$ is the
+source term. The thermal properties, $\rho$, $c$, and $k$ (density, specific
+heat, and thermal conductivity) are in general function of space and time, but
+for a homogeneous media, this can be rewritten as:
+\begin{equation*}
+    \pdv{T}{t} = \alpha\laplacian{T} + \frac{A(\vec{r},t)}{\rho c}
+\end{equation*}
+where $\alpha = \frac{\kappa}{\rho c }$ is the thermal diffusivity.
+The Green's function for the heat equation, expressed in Cartesian coordinates, is
+\begin{equation*}
+    G(x,y,z,t,x',y',z',t') = \qty(\frac{1}{4\pi \alpha (t-t')})^{3/2} e^{-\frac{(x-x')^2+(y-y')^2+(z-z')^2}{4\alpha(t-t')}}.
+\end{equation*}
+This function describes the thermal response of the media to an instantaneous
+point source delivered at the point $(x',y',z')$ and time $t'$, and it can
+be used to compute the response of the media to the source term $A$,
+\begin{equation*}
+  T(x,y,z,t) = \int_0^t \int_{-\infty}^{\infty} \int_{-\infty}^{\infty} \int_{-\infty}^{\infty} G(x,y,z,t;x',y',z',t') \frac{A(x',y',z',t')}{\rho c} \dd x' \dd y' \dd z' \dd t'
+\end{equation*}
+A laser beam incident on a thin, linear absorbing layer of tissue will produce a spatial source term
+\begin{equation*}
+    A(x',y',z') = \mu_a E(x',y') e^{-\mu_a z'} = \mu_a E_0 \bar{E(x',y') e^{-\mu_a z'}}
+\end{equation*}
+while the laser is on,
+where $\bar{E}$ denotes the normalized beam profile ($\bar{E}(0,0,) = 0$) and $E_0$ is the irradiance at the center of the beam.
+For a circular flat top beam of radius $R$, this is
+\begin{equation*}
+    \bar{E}(x',y') = \begin{cases}
+        1 & x'^2 + y'^2 \le R^2 \\
+        0 & x'^2 + y'^2 > R^2
+    \end{cases}
+\end{equation*}
+For a circular Gaussian beam with 1/e radius $\sigma$, this
+\begin{equation*}
+    \bar{E}(x',y') = e^{-\frac{x'^2 + y'^2}{\sigma^2}}
+\end{equation*}
+Let the absorbing layer have a thickness $d$ and span from $z_0$ to $z_0 + d$. Then the temperature
+by the absorbing layer while the laser is on will be
+\begin{equation*}
+  T(x,y,z,t) = \int_0^t \int_{z_0}^{z_0 + d} \int_{-\infty}^{\infty} \int_{-\infty}^{\infty} \qty(\frac{1}{4\pi \alpha t'})^{3/2} e^{-\frac{(x-x')^2+(y-y')^2+(z-z')^2}{4\alpha t'}} \frac{\mu_a E(x',y') e^{-\mu_a z'}}{\rho c} \dd x' \dd y' \dd z' \dd t',
+\end{equation*}
+where we have used the fact that $A$ does not depend on time to simplify the time-dependence.
+The axial integral can be carried out analytically,
+\begin{equation*}
+    \int_{z_0}^{z_0 + d} e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'
+\end{equation*}
+Let $\beta = \frac{1}{\sqrt{4 \alpha t'}}$. Then,
+\begin{equation*}
+    \int_{z_0}^{z_0 + d} e^{-\beta^2 (z-z')^2-\mu_a z'} \dd z' =
+    \int_{z_0}^{z_0 + d} e^{-\qty(\beta^2 z^2 + \beta^2z'^2 -2\beta^2zz'+\mu_a z')} \dd z'
+\end{equation*}
+Completing the square for the exponent
+\begin{equation*}
+  \beta^2 z^2 + \beta^2 z'^2 -2\beta^2 z z' + \mu_a z' = \qty(\beta z' + \frac{\mu_a}{2\beta})^2 - \qty(\frac{\mu_a}{2\beta})^2 = \qty(\beta z' + \frac{\mu_a}{2\beta} - \beta z)^2 - \qty(\frac{\mu_a}{2\beta})^2  + \mu_a z
+\end{equation*}
+gives
+\begin{align*}
+  e^{-\mu_a z} e^{\mu_a^2/2\beta^2}\int_{z_0}^{z_0 + d} e^{-\qty(\beta z' + \frac{\mu_a}{2\beta} - \beta z)^2} \dd z'
+= e^{-\mu_a z} e^{\mu_a^2/2\beta^2}\int_{\beta z_0 + \mu_a/2\beta - \beta z}^{\beta(z_0 + d) + \mu_a/2\beta - \beta z} e^{-u^2} \frac{\dd u'}{\beta}
+\end{align*}
+with $u = \beta z' + \mu_a/2\beta - \beta z$, which can be integrated using definition of the error function
+\begin{equation*}
+  \erf(x) = \frac{2}{\sqrt{\pi}} \int_0^x e^{-u^2} \dd u,
+\end{equation*}
+to give
+\begin{align*}
+  \frac{\sqrt{\pi}}{2\beta} e^{-\mu_a z} e^{\mu_a^2/2\beta^2}\qty[\erf\qty(\beta(z_0 + d - z) + \frac{\mu_a}{2\beta} ) - \erf\qty(\beta(z_0 - z) + \frac{\mu_a}{2\beta}) ] \\
+  = \sqrt{\pi\alpha t'} e^{-\mu_a z} e^{\alpha t'\mu_a^2}\qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ]
+\end{align*}
+To simplify transverse integrals we consider only the temperature along the $z$ axis. Then
+we need to evaluate
+\begin{equation*}
+    \int \int \bar{E}(x',y') e^{-\frac{x'^2 + y'^2}{4\alpha t'}} \dd x' \dd y'
+\end{equation*}
+For circularly symmetric beams, we can switch to polar coordinates and
+integrate the azimuthal angle,
+\begin{equation*}
+    \int_0^{2\pi} \int_0^\infty \bar{E}(r') e^{-\frac{r'^2}{4\alpha t'}} r'\dd r' \dd \theta'
+    = 2\pi \int_0^\infty  \bar{E}(r') e^{-\frac{r'^2}{4\alpha t'}} r'\dd r'
+\end{equation*}
+To evaluate radial integral, we need to specify the beam profile. For a flat top
+beam of radius $R$, we will have
+\begin{equation*}
+  2\pi \int_0^R e^{-\frac{r'^2}{4\alpha t'}} r'\dd r'
+  =  4\pi \alpha t' \qty[1 - e^{-R^2/4\alpha t'}]
+\end{equation*}
+For a Gaussian beam with 1/e radius $\sigma$ clipped by a circular aperture of radius $R$, we will have
+\begin{equation*}
+2\pi \int_0^R e^{-\frac{r'^2}{\sigma^2}} e^{-\frac{r'^2}{4\alpha t'}} r'\dd r'
+=  \frac{\pi}{1/4\alpha t' + 1/\sigma^2} \qty[1 - e^{-\frac{R^2}{4\alpha t' + \sigma^2}}]
+=  \frac{4 \pi \alpha t' \sigma^2}{4\alpha t' + \sigma^2} \qty[1 - e^{-\frac{R^2}{4\alpha t' + \sigma^2}}]
+.
+\end{equation*}
+For an unclipped beam, $R = \infty$. Putting this all together, for a flat top beam we have
+\begin{align}
+  \label{eq:flattop_temp}
+  T(r=0, z,t) =& \frac{\mu_aE_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2} \qty{\int_{z_0}^{z_0 + d}e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'} \qty{2\pi\int_{0}^{R} e^{-\frac{r'^2}{4\alpha t'}}r'\dd r'}\dd t' \\
+  =& \frac{\mu_a E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2}  \\
+  \times & \qty{\sqrt{\pi\alpha t'} e^{-\mu_a z} e^{\alpha t'\mu_a^2}\qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ]} \\
+  \times & \qty{4\pi \alpha t' \qty[1 - e^{-R^2/4\alpha t'}] }
+  \dd t' \\
+  =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \\
+  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \\
+  \times & \qty[1 - e^{-R^2/4\alpha t'} ]
+  \dd t'
+\end{align}
+For a Gaussian beam we have
+\begin{align}
+  \label{eq:gaussian_temp}
+  T(r =0,z,t) =& \frac{\mu_a}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2} \qty{\int_{z_0}^{z_0 + d}e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'} \qty{2\pi\int_{0}^{R} E_0 e^{-\frac{r'^2}{\sigma^2}} e^{-\frac{r'^2}{4\alpha t'}}r'\dd r'}\dd t' \\
+  =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \\
+  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \\
+  \times & \frac{1}{1 + 4\alpha t'/\sigma^2} \qty[1 - e^{-R^2/4\alpha t'} ]
+  \dd t'
+\end{align}
+
+
+\subsection{Approximations}
+
+In theory, Equation \ref{eq:flattop_temp} and \ref{eq:gaussian_temp} can be integrated
+numerically to calculate the temperature at $r = 0$ at any time $t$. However,
+in practice the calculation is difficult. One of the issues is that the
+terms arising from the $z$ integral become very large or small individually and
+exceed the precision of standard floating point numbers for long time. This
+is especially an issue when the absorption coefficient is large.
+
+The $z$ portion of the integral is
+\begin{equation*}
+    \int_{z_0}^{z_0 + d} e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'
+\end{equation*}
+The Gaussian term can be written as a power series
+\begin{equation*}
+  e^{-\frac{(z-z')^2}{4\alpha t'}} = 1 - \frac{(z-z')^2}{4\alpha t'} + \frac{1}{2}\left(\frac{(z-z')^2}{4\alpha t'}\right)^2 + \ldots
+\end{equation*}
+If $(z-z')^2/4\alpha t'$ is small, which will be the case for positions $z$ close
+to the source at long times, then
+\begin{equation*}
+    \int_{z_0}^{z_0 + d} e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z' \approx
+    \int_{z_0}^{z_0 + d} \left[1 - \frac{(z-z')^2}{4\alpha t'}\right] e^{-\mu_a z'} \dd z'
+\end{equation*}
+\begin{equation*}
+    \left[1 - \frac{(z-z')^2}{4\alpha t'}\right] e^{-\mu_a z'}
+=   \left[1 - \frac{z^2}{4\alpha t'} + \frac{2zz'}{4\alpha t'} -\frac{z'^2}{4\alpha t'}\right] e^{-\mu_a z'}
+\end{equation*}
+There are three integrals to evaluate
+\begin{equation*}
+    \int_{z_0}^{z_0 + d}
+   \left(1 -  \frac{z^2}{4\alpha t'}\right)e^{-\mu_a z'}
+    \dd z' =
+    \left.\left(1 -  \frac{z^2}{4\alpha t'}\right)\frac{e^{-\mu_a z'}}{-\mu_a} \right|_{z_0}^{z_0 + d}
+    = \left(1 -  \frac{z^2}{4\alpha t'}\right)\frac{e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}}{\mu_a}
+\end{equation*}
+
+\begin{equation*}
+    \int_{z_0}^{z_0 + d}
+   \frac{2zz'}{4\alpha t'} e^{-\mu_a z'}
+   \dd z'
+   = \left.\frac{2z}{4\alpha t'} \left(\frac{-\mu_az' - 1}{\mu_a^2} \right)e^{-\mu_a z'} \right|_{z_0}^{z_0 + d}
+     = \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a^2}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a^2}e^{-\mu_a (z_0+d)}\right)
+\end{equation*}
+\begin{align*}
+    \int_{z_0}^{z_0 + d}
+   \frac{z'^2}{4\alpha t'} e^{-\mu_a z'}
+   \dd z'
+   &= \left.\frac{1}{4\alpha t'} \left( \frac{z'^2}{-\mu_a} - \frac{2z'}{\mu_a^2} + \frac{2}{-\mu_a^3} \right)e^{-\mu_a z'} \right|_{z_0}^{z_0 + d} \\
+   &= \left.\frac{1}{4\alpha t'} \left( \frac{z'^2}{\mu_a} + \frac{2z'}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a z'} \right|_{z_0 + d}^{z_0} \\
+   &=
+   \frac{1}{4\alpha t'}\left[
+   \left( \frac{z_0^2}{\mu_a} + \frac{2z_0}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a z_0} -
+   \left( \frac{(z_0 + d)^2}{\mu_a} + \frac{2(z_0 + d)}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a (z_0+d)}
+   \right]
+\end{align*}
+
+
+\begin{align*}
+    \int_{z_0}^{z_0 + d} e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z' &\approx
+    \left(1 -  \frac{z^2}{4\alpha t'}\right)\frac{e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}}{\mu_a} \\
+    &+ \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a^2}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a^2}e^{-\mu_a (z_0+d)}\right) \\
+    &- \frac{1}{4\alpha t'}\left[
+   \left( \frac{z_0^2}{\mu_a} + \frac{2z_0}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a z_0} -
+   \left( \frac{(z_0 + d)^2}{\mu_a} + \frac{2(z_0 + d)}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a (z_0+d)}
+   \right]
+\end{align*}
+For $z=z_0=0$, this simplifies to
+\begin{align*}
+    \int_{z_0}^{z_0 + d} e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z' &\approx
+    \frac{1 - e^{-\mu_a d}}{\mu_a}
+    - \frac{1}{4\alpha t'}\left[
+   \left( \frac{2}{\mu_a^3} \right) -
+   \left( \frac{d^2}{\mu_a} + \frac{2d}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a d}
+   \right]
+\end{align*}
+For ``long'' time, $4\alpha t' >> z$, we can keep just the first term,
+\begin{align*}
+    \int_{z_0}^{z_0 + d} e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z' &\approx
+    \frac{e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}}{\mu_a}
+\end{align*}
+Inserting the approximation into Equation \ref{eq:flattop_temp}
+\begin{align}
+  T(r=0, z,t) =& \frac{\mu_a E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2}  \\
+  \times & \left\{\left(1 -  \frac{z^2}{4\alpha t'}\right)\frac{e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}}{\mu_a} \right.\\
+    &+ \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a^2}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a^2}e^{-\mu_a (z_0+d)}\right) \\
+    &- \left.\frac{1}{4\alpha t'}\left[
+   \left( \frac{z_0^2}{\mu_a} + \frac{2z_0}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a z_0} -
+   \left( \frac{(z_0 + d)^2}{\mu_a} + \frac{2(z_0 + d)}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a (z_0+d)}
+ \right]
+\right\} \\
+  \times & \qty{4\pi \alpha t' \qty[1 - e^{-R^2/4\alpha t'}] }
+  \dd t' \\
+  =&
+  \frac{E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{1/2}  \\
+  \times & \left\{\qty[e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}]   -  \frac{z^2}{4\alpha t'}\qty[e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}]\right.\\
+    &+ \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a}e^{-\mu_a (z_0+d)}\right) \\
+    &- \left.\frac{1}{4\alpha t'}\left[
+   \left( z_0^2       + \frac{2z_0}{\mu_a} + \frac{2}{\mu_a^2} \right)e^{-\mu_a z_0} -
+   \left( (z_0 + d)^2 + \frac{2(z_0 + d)}{\mu_a} + \frac{2}{\mu_a^2} \right)e^{-\mu_a (z_0+d)}
+ \right]
+\right\} \\
+  \times & \qty[1 - e^{-R^2/4\alpha t'}]
+  \dd t' \\
+\end{align}
+
+
+
+\subsection{Pulsed Exposures}
+
+The temperature rises caused by a CW exposure is given by integrating the Green's Function,
+\begin{equation}
+  \Delta T(t) = \int_{0}^{t} G(t') \dd t'.
+\end{equation}
+Because the temperature rise is linear, we can use the CW temperature rise to compute
+the temperature rise caused by a pulsed exposure,
+\begin{equation}
+  \Delta T(t) = \begin{cases}
+    \int_{0}^{t} G(t') \dd t' & t \le \tau \\
+    \int_{0}^{t} G(t') \dd t' - \int_{0}^{t-\tau} G(t') \dd t' & t > \tau.
+\end{cases}
+\end{equation}
+After the pulse, the temperature rise is given by the difference between the CW temperature rise at the times $t$ and $t-\tau$.
+We can either calculate $\Delta T(t)$ and $\Delta(t-\tau)$, or evaluate the integral over a different set of limits,
+\begin{equation}
+    \int_{0}^{t} G(t') \dd t' - \int_{0}^{t-\tau} G(t') \dd t'  = \Delta T(t) - \Delta T(t-\tau) = \int_{t-\tau}^{t} G(t') \dd t'
+\end{equation}
+
+
+
+
+
+\end{document}

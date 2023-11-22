@@ -1,0 +1,5 @@
+__pycache__/
+workspace
+poetry.lock
+doc/writeups/derivation/2023-GreensFunctionSolutionForRetinaLaserExposure.aux
+doc/writeups/derivation/2023-GreensFunctionSolutionForRetinaLaserExposure.log
