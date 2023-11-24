@@ -111,6 +111,8 @@ class LargeBeamAbsorbingLayerGreensFunction:
                         const_factor * time_factor * (-term2 + term3 - term4)
                     )
                     approx = low_order_approx + high_order_correction
+                    if approx < 0:
+                        return low_order_approx
 
                     return approx
 
