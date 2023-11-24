@@ -1,2 +1,3 @@
 nmap <localleader>b :AsyncRun just -f %:p:h/justfile -d %:p:h build<CR>
 nmap <localleader>v :AsyncRun just -f %:p:h/justfile -d %:p:h view<CR>
+au BufWrite *.tex :AsyncRun just -f %:p:h/justfile -d %:p:h build

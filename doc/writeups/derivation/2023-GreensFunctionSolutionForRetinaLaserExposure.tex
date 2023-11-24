@@ -111,25 +111,26 @@ For a Gaussian beam with 1/e radius $\sigma$ clipped by a circular aperture of r
 =  \frac{4 \pi \alpha t' \sigma^2}{4\alpha t' + \sigma^2} \qty[1 - e^{-\frac{R^2}{4\alpha t' + \sigma^2}}]
 .
 \end{equation*}
-For an unclipped beam, $R = \infty$. Putting this all together, for a flat top beam we have
+For an unclipped beam, $R = \infty$.
+
+Putting this all together, for a flat top beam we have
 \begin{align}
   \label{eq:flattop_temp}
-  T(r=0, z,t) =& \frac{\mu_aE_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2} \qty{\int_{z_0}^{z_0 + d}e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'} \qty{2\pi\int_{0}^{R} e^{-\frac{r'^2}{4\alpha t'}}r'\dd r'}\dd t' \\
-  =& \frac{\mu_a E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2}  \\
-  \times & \qty{\sqrt{\pi\alpha t'} e^{-\mu_a z} e^{\alpha t'\mu_a^2}\qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ]} \\
-  \times & \qty{4\pi \alpha t' \qty[1 - e^{-R^2/4\alpha t'}] }
-  \dd t' \\
-  =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \\
-  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \\
+  T(r=0, z,t) =& \frac{\mu_aE_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2} \qty{\int_{z_0}^{z_0 + d}e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'} \qty{2\pi\int_{0}^{R} e^{-\frac{r'^2}{4\alpha t'}}r'\dd r'}\dd t' \nonumber \\
+  =& \frac{\mu_a E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2}  \nonumber \\
+  \times & \qty{\sqrt{\pi\alpha t'} e^{-\mu_a z} e^{\alpha t'\mu_a^2}\qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ]} \nonumber \\
+  \times & \qty{4\pi \alpha t' \qty[1 - e^{-R^2/4\alpha t'}] } \dd t' \nonumber \\
+  =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
+  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \nonumber \\
   \times & \qty[1 - e^{-R^2/4\alpha t'} ]
   \dd t'
 \end{align}
 For a Gaussian beam we have
 \begin{align}
   \label{eq:gaussian_temp}
-  T(r =0,z,t) =& \frac{\mu_a}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2} \qty{\int_{z_0}^{z_0 + d}e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'} \qty{2\pi\int_{0}^{R} E_0 e^{-\frac{r'^2}{\sigma^2}} e^{-\frac{r'^2}{4\alpha t'}}r'\dd r'}\dd t' \\
-  =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \\
-  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \\
+  T(r =0,z,t) =& \frac{\mu_a}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2} \qty{\int_{z_0}^{z_0 + d}e^{-\frac{(z-z')^2}{4\alpha t'}} e^{-\mu_a z'} \dd z'} \qty{2\pi\int_{0}^{R} E_0 e^{-\frac{r'^2}{\sigma^2}} e^{-\frac{r'^2}{4\alpha t'}}r'\dd r'}\dd t' \nonumber \\
+  =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
+  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \nonumber \\
   \times & \frac{1}{1 + 4\alpha t'/\sigma^2} \qty[1 - e^{-R^2/4\alpha t'} ]
   \dd t'
 \end{align}
@@ -217,28 +218,102 @@ For ``long'' time, $4\alpha t' >> z$, we can keep just the first term,
 \end{align*}
 Inserting the approximation into Equation \ref{eq:flattop_temp}
 \begin{align}
-  T(r=0, z,t) =& \frac{\mu_a E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2}  \\
-  \times & \left\{\left(1 -  \frac{z^2}{4\alpha t'}\right)\frac{e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}}{\mu_a} \right.\\
-    &+ \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a^2}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a^2}e^{-\mu_a (z_0+d)}\right) \\
+  \label{eq:flattop_temp_approx}
+  T(r=0, z,t) =& \frac{\mu_a E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{3/2}  \nonumber \\
+  \times & \left\{\left(1 -  \frac{z^2}{4\alpha t'}\right)\frac{e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}}{\mu_a} \right.\nonumber \\
+    &+ \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a^2}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a^2}e^{-\mu_a (z_0+d)}\right) \nonumber \\
     &- \left.\frac{1}{4\alpha t'}\left[
    \left( \frac{z_0^2}{\mu_a} + \frac{2z_0}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a z_0} -
    \left( \frac{(z_0 + d)^2}{\mu_a} + \frac{2(z_0 + d)}{\mu_a^2} + \frac{2}{\mu_a^3} \right)e^{-\mu_a (z_0+d)}
  \right]
-\right\} \\
+\right\} \nonumber \\
   \times & \qty{4\pi \alpha t' \qty[1 - e^{-R^2/4\alpha t'}] }
   \dd t' \\
   =&
-  \frac{E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{1/2}  \\
-  \times & \left\{\qty[e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}]   -  \frac{z^2}{4\alpha t'}\qty[e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}]\right.\\
-    &+ \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a}e^{-\mu_a (z_0+d)}\right) \\
+  \frac{E_0}{\rho c} \int_0^t \qty(\frac{1}{4\pi \alpha t'})^{1/2}  \nonumber \nonumber \\
+  \times & \left\{\qty[e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}]   -  \frac{z^2}{4\alpha t'}\qty[e^{-\mu_a z_0} - e^{-\mu_a (z_0+d)}]\right. \nonumber \\
+    &+ \frac{2z}{4\alpha t'} \left( \frac{\mu_a z_0 + 1}{\mu_a}e^{-\mu_a z_0} - \frac{\mu_a (z_0+d) + 1}{\mu_a}e^{-\mu_a (z_0+d)}\right) \nonumber \\
     &- \left.\frac{1}{4\alpha t'}\left[
    \left( z_0^2       + \frac{2z_0}{\mu_a} + \frac{2}{\mu_a^2} \right)e^{-\mu_a z_0} -
    \left( (z_0 + d)^2 + \frac{2(z_0 + d)}{\mu_a} + \frac{2}{\mu_a^2} \right)e^{-\mu_a (z_0+d)}
  \right]
-\right\} \\
+\right\} \nonumber \\
   \times & \qty[1 - e^{-R^2/4\alpha t'}]
-  \dd t' \\
+  \dd t'
 \end{align}
+
+\subsection{Off Axis Temperatures}
+The derivation of Equations \ref{eq:flattop_temp} and \ref{eq:gaussian_temp} assumed $x = y = 0$, i.e., it is only valid for the temperature rise on the $z$ axis.
+To compute the temperature off axis, we need to evaluate 
+\begin{equation*}
+  \int_{-\infty}^\infty \int_{-\infty}^\infty \bar{E}(x',y') e^{-\frac{(x-x')^2 + (y-y')^2}{4\alpha t'}} \dd x' \dd y'.
+\end{equation*}
+We can switch to polar coordinates by noting that $(x-x') + (y-y') = |\vec{r}-\vec{r}'|^2 = (\vec{r}-\vec{r}')\cdot(\vec{r}-\vec{r}') = \vec{r}\cdot\vec{r} + \vec{r}'\cdot\vec{r}' - 2r r' \cos(\phi - \phi')$
+\begin{equation*}
+  \int_0^\infty \int_0^{2\pi} \bar{E}(r',\phi')  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}e^{-\frac{2rr'\cos(\phi-\phi')}{4\alpha t'}}r' \dd \phi' \dd r'.
+\end{equation*}
+If the source term is symmetric about the $z$ axis, we can evaluate the integral at $\phi=0$ without loss of generality.
+\begin{equation*}
+\int_0^\infty \bar{E}(r') r'e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}\int_0^{2\pi} e^{-2rr'\cos(\phi')/4\alpha t'} \dd \phi' \dd r'.
+\end{equation*}
+That the zero'th order Modified Bessel Function of the First Kind, $I_0(x)$ has an integral representation
+\begin{equation}
+  I_0(x) = \frac{1}{\pi} \int_0^\pi e^{x\cos(\phi)} \dd \phi.
+\end{equation}
+The azimuthal integral then can be carried out by noting that the integrand is symmetric about $\phi' = \pi$
+\begin{equation*}
+\int_0^{2\pi}  e^{-2rr'\cos(\phi')/4\alpha t'}\dd \phi'
+=2\int_0^{\pi}  e^{-2rr'\cos(\phi')/4\alpha t'}\dd \phi'
+=2\pi I_0\qty(\frac{-2rr'}{4\alpha t'})
+=2\pi I_0\qty(\frac{2rr'}{4\alpha t'}).
+\end{equation*}
+The radian integral is then
+\begin{equation*}
+  2\pi \int_0^\infty \bar{E}(r')   e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
+\end{equation*}
+We need a function for the beam profile to go farther, for a flat top beam with radius $R$,
+we need to evaluate the integral
+\begin{equation*}
+  2\pi \int_0^R  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
+\end{equation*}
+The integral can be carried out using the the Marcum Q-function, which is defined as
+\begin{equation*}
+Q_\nu(a,b) = 1 - \frac{1}{a^{\nu-1}}\int_0^b x^\nu e^{-\frac{x^2 + a^2}{2}} I_{\nu-1}(ax) \dd x.
+\end{equation*}
+In our case, $\nu=1$.
+To cast our integral into this form, let $x = r'/\sqrt{2\alpha t'}, a = r/\sqrt{2\alpha t'}$, which gives
+\begin{equation*}
+  2\pi 2\alpha t' \int_0^{R/\sqrt{2\alpha t'}} e^{-a^2/2}e^{-x^2/2}I_0\qty(ax) x\dd x= 4\pi\alpha t' \qty(1 - Q_0(r/\sqrt{2\alpha t'},R/\sqrt{2\alpha t'}))
+\end{equation*}
+Plugging this into Equation \ref{eq:flattop_temp} gives
+\begin{align}
+  \label{eq:flattop_off_axis_temp}
+  T(r=0, z,t) =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
+  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \nonumber \\
+  \times & \qty[1 - Q_0\qty(r/\sqrt{2\alpha t'},R/\sqrt{2\alpha t'}) ]
+  \dd t'
+\end{align}
+
+
+
+
+For a Gaussian beam with 1/e radius $\sigma$, we need to evaluate
+\begin{equation*}
+  2\pi \int_0^R  
+e^{-\frac{r'^2}{\sigma^2}} 
+  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
+  = 
+  2\pi \int_0^R  
+  e^{-\frac{r^2}{4\alpha t'}}e^{-\qty(\frac{1}{\sigma^2} + \frac{r'^2}{4\alpha t'})r'^2} 
+  I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
+\end{equation*}
+Multiplying by $e^{\frac{r^2}{\sigma^2} - \frac{r^2}{\sigma^2}}$, we can write this as
+\begin{equation*}
+  2\pi e^{r^2/\sigma^2} \int_0^R  
+  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r^2 }e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
+  I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
+\end{equation*}
+
 
 
 
