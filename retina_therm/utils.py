@@ -1,6 +1,7 @@
 import copy
 import itertools
 
+import scipy
 from fspathtree import fspathtree
 
 
@@ -24,3 +25,7 @@ def bisect(f, a, b, tol=1e-8, max_iter=1000):
         f_mid = f(mid)
 
     return (a, b)
+
+
+def MarcumQFunction(nu, a, b):
+    return 1 - scipy.stats.ncx2.cdf(b**2, 2 * nu, a**2)

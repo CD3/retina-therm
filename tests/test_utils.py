@@ -3,8 +3,8 @@ import pprint
 import pytest
 
 import retina_therm.config_utils
-import retina_therm.utils
 import retina_therm.units
+import retina_therm.utils
 
 
 def test_bisect():
@@ -74,7 +74,6 @@ def test_expand_batch_with_quantities():
 
 def test_compute_missing_parameters():
     config = retina_therm.utils.fspathtree(
-
         {"laser": {"E0": "1 mW/cm**2", "R": "10 um"}}
     )
     retina_therm.config_utils.compute_missing_parameters(config)
@@ -82,53 +81,82 @@ def test_compute_missing_parameters():
     config["laser/E0"] == "1 mW/cm**2"
     config["laser/R"] == "10 um"
 
-
-
     ##########################
 
     config = retina_therm.utils.fspathtree(
-
         {"laser": {"E0": "1 mW/cm**2", "D": "10 um"}}
     )
     retina_therm.config_utils.compute_missing_parameters(config)
 
     config["laser/E0"] == "1 mW/cm**2"
     assert retina_therm.units.Q_(config["laser/R"]).magnitude == pytest.approx(5)
-    assert retina_therm.units.Q_(config["laser/R"]).to("cm").magnitude == pytest.approx(0.0005)
-
-
+    assert retina_therm.units.Q_(config["laser/R"]).to("cm").magnitude == pytest.approx(
+        0.0005
+    )
 
     ##########################
 
-    config = retina_therm.utils.fspathtree(
-
-        {"laser": {"Phi": "1 mW", "D": "10 um"}}
-    )
+    config = retina_therm.utils.fspathtree({"laser": {"Phi": "1 mW", "D": "10 um"}})
     retina_therm.config_utils.compute_missing_parameters(config)
 
-    assert retina_therm.units.Q_(config["laser/E0"]).magnitude == pytest.approx(1 / (3.14159*5**2))
-    assert retina_therm.units.Q_(config["laser/E0"]).to("W/cm**2").magnitude == pytest.approx(1e5 / (3.14159*5**2))
+    assert retina_therm.units.Q_(config["laser/E0"]).magnitude == pytest.approx(
+        1 / (3.14159 * 5**2)
+    )
+    assert retina_therm.units.Q_(config["laser/E0"]).to(
+        "W/cm**2"
+    ).magnitude == pytest.approx(1e5 / (3.14159 * 5**2))
 
     ##########################
 
     config = retina_therm.utils.fspathtree(
-
-            {"laser": {"H": "1 mJ/cm^2", "D": "10 um", 'duration':'2 s'}}
+        {"laser": {"H": "1 mJ/cm^2", "D": "10 um", "duration": "2 s"}}
     )
     retina_therm.config_utils.compute_missing_parameters(config)
 
     assert retina_therm.units.Q_(config["laser/E0"]).magnitude == pytest.approx(0.5)
-    assert retina_therm.units.Q_(config["laser/E0"]).to("W/cm**2").magnitude == pytest.approx(0.5e-3)
-
-
+    assert retina_therm.units.Q_(config["laser/E0"]).to(
+        "W/cm**2"
+    ).magnitude == pytest.approx(0.5e-3)
 
     ##########################
 
     config = retina_therm.utils.fspathtree(
-
-            {"laser": {"Q": "1 mJ", "D": "10 um", 'duration':'2 s'}}
+        {"laser": {"Q": "1 mJ", "D": "10 um", "duration": "2 s"}}
     )
     retina_therm.config_utils.compute_missing_parameters(config)
 
-    assert retina_therm.units.Q_(config["laser/E0"]).magnitude == pytest.approx(0.5 / (3.14159*5**2))
-    assert retina_therm.units.Q_(config["laser/E0"]).to("W/cm**2").magnitude == pytest.approx(1e5*0.5 / (3.14159*5**2))
+    assert retina_therm.units.Q_(config["laser/E0"]).magnitude == pytest.approx(
+        0.5 / (3.14159 * 5**2)
+    )
+    assert retina_therm.units.Q_(config["laser/E0"]).to(
+        "W/cm**2"
+    ).magnitude == pytest.approx(1e5 * 0.5 / (3.14159 * 5**2))
+
+
+def test_marcum_q_function():
+    # computed using WolframAlpha https://wolframalpha.com
+    evaluations = [
+        ((1, 0, 0), 1),
+        ((2, 0, 0), 1),
+        ((2, 1, 0), 1),
+        ((2, 1, 0), 1),
+        (
+            (1, 0, 1),
+            0.6065306597126334236037995349911804534419181354871869556828921587,
+        ),
+        (
+            (1, 2, 1),
+            0.9181076963694060039105695602622025530636609822389841572133252640,
+        ),
+        (
+            (1, 1, 1),
+            0.7328798037968202182509507647816049993664329559143995840198057465,
+        ),
+        (
+            (1, 1, 2),
+            0.2690120600359099966785169592202710874213375007448733841550744652,
+        ),
+    ]
+
+    for args, value in evaluations:
+        assert retina_therm.utils.MarcumQFunction(*args) == pytest.approx(value)
