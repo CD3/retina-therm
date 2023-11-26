@@ -107,7 +107,7 @@ def test_gf_integrators():
         }
     )
     integrator = greens_functions.GreensFunctionTrapezoidIntegrator(G)
-    T = integrator.temperature_rise(0, numpy.arange(0, 0.001, 0.0001), {'duration':'0.001 s'})
+    T = integrator.temperature_rise(
+        0, numpy.arange(0, 0.001, 0.0001), {"duration": "0.001 s"}
+    )
     assert len(T) == 10
-
-

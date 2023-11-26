@@ -7,6 +7,7 @@ from mpmath import mp
 from tqdm import tqdm
 
 from .units import *
+from .utils import MarcumQFunction
 
 
 class LargeBeamAbsorbingLayerGreensFunction:
@@ -64,7 +65,7 @@ class LargeBeamAbsorbingLayerGreensFunction:
             self.exp = numpy.exp
 
     def __call__(
-        self, z: float | mp.mpf | Q_, tp: float | mp.mpf | Q_
+            self, z: float | mp.mpf | Q_, r : float|mp.mpf, tp: float | mp.mpf | Q_
     ) -> float | mp.mpf:
         if self.use_approximate:
             if tp > 0:
@@ -163,18 +164,49 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
             for param in ["R"]:
                 setattr(self, param, mp.mpf(getattr(self, param)))
 
-    def __call__(self, z: float | mp.mpf, tp: float | mp.mpf) -> float | mp.mpf:
-        term1 = super().__call__(z, tp)
-        if tp == 0:
-            return term1
-        term2 = 1 - self.exp(-(self.R**2) / 4 / self.alpha / tp)
+    def __call__(self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None) -> float | mp.mpf:
+        # special conditions
+        # if the sensor is outside of the beam at t = 0,
+        # the temperature rise will be zero
+        if tp == 0 and r > self.R:
+            return 0.0
+        zfactor = super().__call__(z, r, tp)
 
-        return term1 * term2
+        # if the sensor is inside the beam, at t = 0,
+        # the temperature rise will be the same as on axis
+        if tp == 0:
+            return zfactor
+
+        if r == 0:
+        # If we want the temperature on the z axis, it is _much_
+        # faster to call the exp(...) function instead of MarcumQFunction.
+            rfactor = 1 - self.exp(-(self.R**2) / 4 / self.alpha / tp)
+        else:
+        # If we are calculating the temperature off axis, we have no choice
+        # but to call the expensive function
+        # TODO: add support for calling a WASM-commpiled version of this function. Initial testing indicates
+        #       it could be 10x faster.
+            rfactor = 1 - MarcumQFunction(1,r/self.sqrt(2*self.alpha*tp),self.R/self.sqrt(2*self.alpha*tp))
+
+        return zfactor*rfactor
 
 
 class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFunction):
     def __init__(self, config: dict) -> None:
         super().__init__(config)
+
+    def __call__(self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None) -> float | mp.mpf:
+        zfactor = super().__call__(z, r, tp)
+
+        if r == 0:
+            rfactor = 1 / (1 + 4*self.alpha*tp/self.R**2)
+        else:
+            tmp1 = 1 / (1 + 4*self.alpha*tp/self.R**2)
+            tmp2 = (self.R**2/4/self.alpha/tp)
+
+            rfactor = tmp1 * self.exp(tmp2*(tmp1 - 1))
+
+        return zfactor*rfactor
 
 
 class MultiLayerGreensFunction:
@@ -209,9 +241,9 @@ class MultiLayerGreensFunction:
             )
             if "R" in config["laser"] and config["laser"]["R"] is not None:
                 c["R"] = config["laser"]["R"]
-                if config.get("profile", "flattop").lower() == "flattop":
+                if config['laser'].get("profile", "flattop").lower() == "flattop":
                     G = FlatTopBeamAbsorbingLayerGreensFunction(c)
-                elif config.get("profile").lower() == "gaussian":
+                elif config['laser'].get("profile").lower() == "gaussian":
                     G = GaussianBeamAbsorbingLayerGreensFunction(c)
             else:
                 G = LargeBeamAbsorbingLayerGreensFunction(c)
@@ -236,8 +268,8 @@ class MultiLayerGreensFunction:
                         f"ERROR: Layer {i} overlaps with layer {i-1}. z_{i} = {self.layers[i].z0}, z_{i-1} + d_{i-1} = {self.layers[i-1].z0 + self.layers[i-1].d}"
                     )
 
-    def __call__(self, z: float | mp.mpf, tp: float | mp.mpf) -> float | mp.mpf:
-        return sum([G(z, tp) for G in self.layers])
+    def __call__(self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None) -> float | mp.mpf:
+        return sum([G(z,r,tp) for G in self.layers])
 
 
 class GreensFunctionIntegrator:
@@ -260,6 +292,7 @@ class GreensFunctionTrapezoidIntegrator(GreensFunctionIntegrator):
     def temperature_rise(
         self,
         z: float | mp.mpf,
+        r: float | mp.mpf,
         ts: list[float | mp.mpf],
         config: dict,
     ):
@@ -306,6 +339,7 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
     def temperature_rise(
         self,
         z: float | mp.mpf,
+        r: float | mp.mpf,
         ts: list[float | mp.mpf],
         config: dict,
     ):
@@ -325,7 +359,7 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
             subinterval_range = (tmax - tmin) / num_subintervals
 
         def f(tp):
-            return self.G(z, tp)
+            return self.G(z,r,tp)
 
         subinterval_values = numpy.zeros([num_subintervals])
         for i in range(num_subintervals):
@@ -377,13 +411,6 @@ class CWRetinaLaserExposure:
         self.start = Q_(config.get("laser", {}).get("start", "0 s")).to("s")
         self.duration = Q_(config.get("laser", {}).get("duration", "1 year")).to("s")
 
-        # if not self.G.with_units:
-        #     for param in ["duration", "start"]:
-        #         setattr(self, param, getattr(self, param).magnitude)
-        #
-        # if self.G.use_multi_precision:
-        #     for param in ["duration", "start"]:
-        #         setattr(self, param, mp.mpf(getattr(self, param)))
 
     def make_integrator_config(self):
         config = {
@@ -393,7 +420,7 @@ class CWRetinaLaserExposure:
         return config
 
     def temperature_rise(
-        self, z: float | mp.mpf, t: list[float] | list[mp.mpf], method="trap"
+            self, z: float | mp.mpf, r: float | mp.mpf, t: list[float] | list[mp.mpf], method="trap"
     ):
         Integrator = None
         if method == "trap":
@@ -401,7 +428,7 @@ class CWRetinaLaserExposure:
         if method == "quad":
             Integrator = GreensFunctionQuadIntegrator(self.G)
 
-        return Integrator.temperature_rise(z, t, self.make_integrator_config())
+        return Integrator.temperature_rise(z, r, t, self.make_integrator_config())
 
 
 class PulsedRetinaLaserExposure(CWRetinaLaserExposure):
@@ -420,13 +447,6 @@ class PulsedRetinaLaserExposure(CWRetinaLaserExposure):
         self.pulse_duration = Q_(config["laser"]["pulse_duration"]).to("s")
         self.pulse_period = Q_(config["laser"].get("pulse_period", "1 year")).to("s")
 
-        # if not self.G.with_units:
-        #     for param in ["pulse_duration", "pulse_period"]:
-        #         setattr(self, param, getattr(self, param).magnitude)
-        #
-        # if self.G.use_multi_precision:
-        #     for param in ["pulse_duration", "pulse_period"]:
-        #         setattr(self, param, mp.mpf(getattr(self, param)))
 
     def make_integrator_config(self):
         config = {

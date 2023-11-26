@@ -72,6 +72,7 @@ def load_config(config_file: Path, overrides: list[str]):
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
 
+
     config = fspathtree(config)
 
     for item in overrides:
@@ -105,6 +106,8 @@ def relaxation_time_job(config: fspathtree) -> None:
     tmax = units.Q_(tmax).to("s").magnitude
     z = config.get("sensor/z", "0 um")
     z = units.Q_(z).to("cm").magnitude
+    r = config.get("sensor/r", "0 um")
+    r = units.Q_(r).to("cm").magnitude
     i = 0
     t = i * dt
     T = G(z, t)
@@ -123,9 +126,9 @@ def relaxation_time_job(config: fspathtree) -> None:
     i_min = i / 2
     stdout.write(f"Relaxation time bracketed: [{i_min*dt},{i_max*dt}]\n")
 
-    t = utils.bisect(lambda t: G(z, t) - Tth, i_min * dt, i_max * dt)
+    t = utils.bisect(lambda t: G(z, r, t) - Tth, i_min * dt, i_max * dt)
     t = sum(t) / 2
-    T = G(z, t)
+    T = G(z,r, t)
 
     stdout.write(f"time: {mp.nstr(mp.mpf(t), 5)}\n")
     stdout.write(f"Temperature: {mp.nstr(T, 5)}\n")
@@ -174,9 +177,11 @@ def impulse_response_job(config):
     tmax = units.Q_(tmax).to("s").magnitude
     z = config.get("sensor/z", "0 um")
     z = units.Q_(z).to("cm").magnitude
+    r = config.get("sensor/r", "0 um")
+    r = units.Q_(r).to("cm").magnitude
     i = 0
     t = i * dt
-    T = G(z, t)
+    T = G(z,r, t)
     Tp = T
     Tth = threshold * Tp
 
@@ -185,7 +190,7 @@ def impulse_response_job(config):
         datout.write(f"{t} {T}\n")
         i += 1
         t = i * dt
-        T = G(z, t)
+        T = G(z,r,t)
     datout.write(f"{t} {T}\n\n")
 
 
@@ -235,6 +240,8 @@ def temperature_rise_job(config):
         G = greens_functions.PulsedRetinaLaserExposure(config.tree)
     z = config.get("sensor/z", "0 um")
     z = units.Q_(z).to("cm").magnitude
+    r = config.get("sensor/r", "0 um")
+    r = units.Q_(r).to("cm").magnitude
 
     if config.get("simulation/time/ts", None) is None:
         dt = config.get("simulation/time/dt", "1 us")
@@ -250,7 +257,7 @@ def temperature_rise_job(config):
     method = config.get("temperature_rise/method", "quad")
 
     print("Computing temperature rise")
-    T = G.temperature_rise(z, t, method=method)
+    T = G.temperature_rise(z, r, t, method=method)
     print("Writing temperature rise")
     for i in range(len(T)):
         datout.write(f"{t[i]} {T[i]}\n")
@@ -352,11 +359,13 @@ def multipulse_microcavitation_threshold(
         G = greens_functions.MultiLayerGreensFunction(config.tree)
         z = config.get("sensor/z", "0 um")
         z = units.Q_(z).to("cm").magnitude
+        r = config.get("sensor/r", "0 um")
+        r = units.Q_(r).to("cm").magnitude
 
         T = numpy.zeros([N])
 
         for i in range(1, len(T)):
-            T[i] = T[i - 1] + G(z, t0 * i)
+            T[i] = T[i - 1] + G(z, r, t0 * i)
 
         for n in range(1, N):
             H = (m * T0 - m * Tnuc) / (1 - m * units.Q_(T[n - 1], "K/(J/cm^2)"))

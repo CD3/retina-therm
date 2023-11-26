@@ -271,8 +271,9 @@ The radian integral is then
 \begin{equation*}
   2\pi \int_0^\infty \bar{E}(r')   e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
 \end{equation*}
-We need a function for the beam profile to go farther, for a flat top beam with radius $R$,
-we need to evaluate the integral
+
+\subsubsection{Flat Top Beams}
+For a flat top beam with radius $R$, we need to evaluate the integral
 \begin{equation*}
   2\pi \int_0^R  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
 \end{equation*}
@@ -296,24 +297,63 @@ Plugging this into Equation \ref{eq:flattop_temp} gives
 
 
 
-
-For a Gaussian beam with 1/e radius $\sigma$, we need to evaluate
+\subsubsection{Gaussian Beams}
+For a Gaussian beam with 1/e radius $\sigma$ we need to evaluate
 \begin{equation*}
-  2\pi \int_0^R  
-e^{-\frac{r'^2}{\sigma^2}} 
+  2\pi \int_0^\infty
+  e^{-\frac{r'^2}{\sigma^2}} 
   e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
   = 
-  2\pi \int_0^R  
-  e^{-\frac{r^2}{4\alpha t'}}e^{-\qty(\frac{1}{\sigma^2} + \frac{r'^2}{4\alpha t'})r'^2} 
+  2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty  
+  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
   I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
 \end{equation*}
-Multiplying by $e^{\frac{r^2}{\sigma^2} - \frac{r^2}{\sigma^2}}$, we can write this as
+% The integral can be cast into a standard form and evaluated,
+% \begin{equation*}
+%   \int_0^\infty t^{\nu + 1} I_\nu\qty(bt) e^{-p^2 t^2} \dd t  = \frac{b^\nu}{\qty(2p^2)^{\nu+1}}  e^{b^2/4p^2}.
+% \end{equation*}
+% In our case, $\nu = 0$, $b = 2r/4\alpha t'$, and $p^2 = \qty(\frac{1}{\sigma^2} + \frac{r'^2}{4\alpha t'})$, which gives
+% \begin{align*}
+%   2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty  
+%   e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
+%   I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'
+%   &=
+%   2\pi e^{-\frac{r^2}{4\alpha t'}}
+%   \frac{1}{2\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})}  e^{\qty(2r/4\alpha t')^2/4\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})} \\
+%   &=
+%   4\pi\alpha t' e^{-\frac{r^2}{4\alpha t'}}
+%   \frac{1}{1 + \frac{4\alpha t'}{\sigma^2}}
+%   e^{\frac{r^2}{4\alpha t'} \frac{1}{ 1 + \frac{4\alpha t'}{\sigma^2}} }
+% \end{align*}
+The integral can be cast into a standard form and evaluated [``Table of Integrals, Series, and Products'', Gradshteyn and Ryzhik pg. 707],
 \begin{equation*}
-  2\pi e^{r^2/\sigma^2} \int_0^R  
-  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r^2 }e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
-  I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
+  \int_0^\infty x e^{-\alpha x^2} I_\nu\qty(\beta x) J_\nu(\gamma x) \dd x = \frac{1}{2\alpha} \exp\qty(\frac{\beta^2 - \gamma^2}{4\alpha}) J_\nu\qty(\frac{\beta\gamma}{2\alpha})
 \end{equation*}
-
+In our case, $\nu = \gamma = 0$, $\beta = 2r/4\alpha t'$, and $\alpha = \qty(\frac{1}{\sigma^2} + \frac{r'^2}{4\alpha t'})$, which gives
+\begin{align*}
+  2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty  
+  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
+  I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'
+  &=
+  2\pi e^{-\frac{r^2}{4\alpha t'}}
+  \frac{1}{2\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})}  e^{\qty(2r/4\alpha t')^2/4\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})} \\
+  &=
+  4\pi\alpha t' e^{-\frac{r^2}{4\alpha t'}}
+  \frac{1}{1 + \frac{4\alpha t'}{\sigma^2}}
+  e^{\frac{r^2}{4\alpha t'} \frac{1}{ 1 + \frac{4\alpha t'}{\sigma^2}} }
+\end{align*}
+Plugging this into Equation \ref{eq:gaussian_temp} gives
+\begin{align}
+  \label{eq:gaussian_off_axis_temp}
+  T(r=0, z,t) =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
+  \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \nonumber \\
+  \times & \qty[
+  e^{-\frac{r^2}{4\alpha t'}}
+  \frac{1}{1 + \frac{4\alpha t'}{\sigma^2}}
+  e^{\frac{r^2}{4\alpha t'} \frac{1}{ 1 + \frac{4\alpha t'}{\sigma^2}} }
+  ]
+  \dd t'
+\end{align}
 
 
 

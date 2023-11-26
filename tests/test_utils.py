@@ -1,6 +1,7 @@
 import pprint
-
 import pytest
+import matplotlib.pyplot as plt
+import numpy
 
 import retina_therm.config_utils
 import retina_therm.units
@@ -160,3 +161,28 @@ def test_marcum_q_function():
 
     for args, value in evaluations:
         assert retina_therm.utils.MarcumQFunction(*args) == pytest.approx(value)
+
+#
+# def test_marcum_q_function_performance():
+#     N = 10
+#     duration = timeit.Timer(lambda : retina_therm.utils.MarcumQFunction(1,0,1)).timeit(number=N)
+#     marcum_runtime=duration/N
+#     print(">>>",marcum_runtime)
+#     duration = timeit.Timer(lambda : numpy.exp(-1)).timeit(number=N)
+#     exp_runtime=duration/N
+#     print(">>>",exp_runtime)
+#     print("marcum/exp:",marcum_runtime/exp_runtime)
+#
+#     pass
+
+    # x = numpy.arange(0,5,0.01)
+    # f1 = numpy.array([1-retina_therm.utils.MarcumQFunction(1,1,2**0.5*b) for b in x])
+    # f2 = numpy.array([1-retina_therm.utils.MarcumQFunction(1,2,2**0.5*b) for b in x])
+    # f3 = numpy.array([ 1-numpy.exp(-b**2) for b in x])
+    #
+    # plt.plot(x,f1,label="f1")
+    # plt.plot(x,f2,label="f2")
+    # plt.plot(x,f3,label="f3")
+    # plt.legend(loc="upper right")
+    # plt.show()
+
