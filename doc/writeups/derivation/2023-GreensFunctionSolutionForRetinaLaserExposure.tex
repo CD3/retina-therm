@@ -244,17 +244,17 @@ Inserting the approximation into Equation \ref{eq:flattop_temp}
 
 \subsection{Off Axis Temperatures}
 The derivation of Equations \ref{eq:flattop_temp} and \ref{eq:gaussian_temp} assumed $x = y = 0$, i.e., it is only valid for the temperature rise on the $z$ axis.
-To compute the temperature off axis, we need to evaluate 
+To compute the temperature off axis, we need to evaluate
 \begin{equation*}
   \int_{-\infty}^\infty \int_{-\infty}^\infty \bar{E}(x',y') e^{-\frac{(x-x')^2 + (y-y')^2}{4\alpha t'}} \dd x' \dd y'.
 \end{equation*}
-We can switch to polar coordinates by noting that $(x-x') + (y-y') = |\vec{r}-\vec{r}'|^2 = (\vec{r}-\vec{r}')\cdot(\vec{r}-\vec{r}') = \vec{r}\cdot\vec{r} + \vec{r}'\cdot\vec{r}' - 2r r' \cos(\phi - \phi')$
+We can switch to polar coordinates by noting that $(x-x')^2 + (y-y')^2 = |\vec{r}-\vec{r}'|^2 = (\vec{r}-\vec{r}')\cdot(\vec{r}-\vec{r}') = \vec{r}\cdot\vec{r} + \vec{r}'\cdot\vec{r}' - 2r r' \cos(\phi - \phi')$
 \begin{equation*}
-  \int_0^\infty \int_0^{2\pi} \bar{E}(r',\phi')  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}e^{-\frac{2rr'\cos(\phi-\phi')}{4\alpha t'}}r' \dd \phi' \dd r'.
+  \int_0^\infty \int_0^{2\pi} \bar{E}(r',\phi')  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}e^{\frac{2rr'\cos(\phi-\phi')}{4\alpha t'}}r' \dd \phi' \dd r'.
 \end{equation*}
 If the source term is symmetric about the $z$ axis, we can evaluate the integral at $\phi=0$ without loss of generality.
 \begin{equation*}
-\int_0^\infty \bar{E}(r') r'e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}\int_0^{2\pi} e^{-2rr'\cos(\phi')/4\alpha t'} \dd \phi' \dd r'.
+\int_0^\infty \bar{E}(r') r'e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}\int_0^{2\pi} e^{2rr'\cos(\phi')/4\alpha t'} \dd \phi' \dd r'.
 \end{equation*}
 That the zero'th order Modified Bessel Function of the First Kind, $I_0(x)$ has an integral representation
 \begin{equation}
@@ -262,9 +262,8 @@ That the zero'th order Modified Bessel Function of the First Kind, $I_0(x)$ has 
 \end{equation}
 The azimuthal integral then can be carried out by noting that the integrand is symmetric about $\phi' = \pi$
 \begin{equation*}
-\int_0^{2\pi}  e^{-2rr'\cos(\phi')/4\alpha t'}\dd \phi'
-=2\int_0^{\pi}  e^{-2rr'\cos(\phi')/4\alpha t'}\dd \phi'
-=2\pi I_0\qty(\frac{-2rr'}{4\alpha t'})
+\int_0^{2\pi}  e^{2rr'\cos(\phi')/4\alpha t'}\dd \phi'
+=2\int_0^{\pi}  e^{2rr'\cos(\phi')/4\alpha t'}\dd \phi'
 =2\pi I_0\qty(\frac{2rr'}{4\alpha t'}).
 \end{equation*}
 The radian integral is then
@@ -284,14 +283,14 @@ Q_\nu(a,b) = 1 - \frac{1}{a^{\nu-1}}\int_0^b x^\nu e^{-\frac{x^2 + a^2}{2}} I_{\
 In our case, $\nu=1$.
 To cast our integral into this form, let $x = r'/\sqrt{2\alpha t'}, a = r/\sqrt{2\alpha t'}$, which gives
 \begin{equation*}
-  2\pi 2\alpha t' \int_0^{R/\sqrt{2\alpha t'}} e^{-a^2/2}e^{-x^2/2}I_0\qty(ax) x\dd x= 4\pi\alpha t' \qty(1 - Q_0(r/\sqrt{2\alpha t'},R/\sqrt{2\alpha t'}))
+  2\pi 2\alpha t' \int_0^{R/\sqrt{2\alpha t'}} e^{-a^2/2}e^{-x^2/2}I_0\qty(ax) x\dd x= 4\pi\alpha t' \qty(1 - Q_1(r/\sqrt{2\alpha t'},R/\sqrt{2\alpha t'}))
 \end{equation*}
 Plugging this into Equation \ref{eq:flattop_temp} gives
 \begin{align}
   \label{eq:flattop_off_axis_temp}
   T(r=0, z,t) =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
   \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \nonumber \\
-  \times & \qty[1 - Q_0\qty(r/\sqrt{2\alpha t'},R/\sqrt{2\alpha t'}) ]
+  \times & \qty[1 - Q_1\qty(r/\sqrt{2\alpha t'},R/\sqrt{2\alpha t'}) ]
   \dd t'
 \end{align}
 
@@ -301,11 +300,11 @@ Plugging this into Equation \ref{eq:flattop_temp} gives
 For a Gaussian beam with 1/e radius $\sigma$ we need to evaluate
 \begin{equation*}
   2\pi \int_0^\infty
-  e^{-\frac{r'^2}{\sigma^2}} 
-  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
-  = 
-  2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty  
-  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
+  e^{-\frac{r'^2}{\sigma^2}}
+  e^{-\frac{r^2}{4\alpha t'}}e^{-\frac{r'^2}{4\alpha t'}}I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'
+  =
+  2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty
+  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2}
   I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'.
 \end{equation*}
 % The integral can be cast into a standard form and evaluated,
@@ -314,8 +313,8 @@ For a Gaussian beam with 1/e radius $\sigma$ we need to evaluate
 % \end{equation*}
 % In our case, $\nu = 0$, $b = 2r/4\alpha t'$, and $p^2 = \qty(\frac{1}{\sigma^2} + \frac{r'^2}{4\alpha t'})$, which gives
 % \begin{align*}
-%   2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty  
-%   e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
+%   2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty
+%   e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2}
 %   I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'
 %   &=
 %   2\pi e^{-\frac{r^2}{4\alpha t'}}
@@ -329,10 +328,10 @@ The integral can be cast into a standard form and evaluated [``Table of Integral
 \begin{equation*}
   \int_0^\infty x e^{-\alpha x^2} I_\nu\qty(\beta x) J_\nu(\gamma x) \dd x = \frac{1}{2\alpha} \exp\qty(\frac{\beta^2 - \gamma^2}{4\alpha}) J_\nu\qty(\frac{\beta\gamma}{2\alpha})
 \end{equation*}
-In our case, $\nu = \gamma = 0$, $\beta = 2r/4\alpha t'$, and $\alpha = \qty(\frac{1}{\sigma^2} + \frac{r'^2}{4\alpha t'})$, which gives
+In our case, $\nu = \gamma = 0$, $\beta = 2r/4\alpha t'$, and $\alpha = \qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})$, which gives
 \begin{align*}
-  2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty  
-  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2} 
+  2\pi e^{-\frac{r^2}{4\alpha t'}}\int_0^\infty
+  e^{-\qty(\frac{1}{\sigma^2} + \frac{1}{4\alpha t'})r'^2}
   I_0\qty(\frac{2rr'}{4\alpha t'}) r'\dd r'
   &=
   2\pi e^{-\frac{r^2}{4\alpha t'}}
@@ -340,7 +339,15 @@ In our case, $\nu = \gamma = 0$, $\beta = 2r/4\alpha t'$, and $\alpha = \qty(\fr
   &=
   4\pi\alpha t' e^{-\frac{r^2}{4\alpha t'}}
   \frac{1}{1 + \frac{4\alpha t'}{\sigma^2}}
-  e^{\frac{r^2}{4\alpha t'} \frac{1}{ 1 + \frac{4\alpha t'}{\sigma^2}} }
+  e^{\frac{r^2}{4\alpha t'} \frac{1}{ 1 + \frac{4\alpha t'}{\sigma^2}} } \\
+  &=
+  4\pi\alpha t'
+  \frac{1}{1 + \frac{4\alpha t'}{\sigma^2}}
+  e^{\frac{r^2}{4\alpha t'} \qty(\frac{1}{ 1 + \frac{4\alpha t'}{\sigma^2}}-1) } \\
+  &=
+  4\pi\alpha t'
+  \frac{\sigma^2}{\sigma^2 + 4\alpha t'}
+  e^{\frac{-r^2}{\sigma^2 + 4\alpha t'}  }
 \end{align*}
 Plugging this into Equation \ref{eq:gaussian_temp} gives
 \begin{align}
@@ -348,9 +355,8 @@ Plugging this into Equation \ref{eq:gaussian_temp} gives
   T(r=0, z,t) =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a z} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
   \times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ] \nonumber \\
   \times & \qty[
-  e^{-\frac{r^2}{4\alpha t'}}
-  \frac{1}{1 + \frac{4\alpha t'}{\sigma^2}}
-  e^{\frac{r^2}{4\alpha t'} \frac{1}{ 1 + \frac{4\alpha t'}{\sigma^2}} }
+  \frac{\sigma^2}{\sigma^2 + 4\alpha t'}
+  e^{\frac{-r^2}{\sigma^2 + 4\alpha t'}  }
   ]
   \dd t'
 \end{align}
