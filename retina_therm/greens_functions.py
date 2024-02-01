@@ -6,6 +6,7 @@ import scipy
 from mpmath import mp
 from tqdm import tqdm
 
+from .schemas import *
 from .units import *
 from .utils import MarcumQFunction
 
@@ -23,6 +24,10 @@ class LargeBeamAbsorbingLayerGreensFunction:
         if "c" not in config:
             raise RuntimeError(
                 "'c' missing: No specific heat in config for Green's function."
+            )
+        if "k" not in config:
+            raise RuntimeError(
+                "'k' missing: No thermal conductivity in config for Green's function."
             )
         if "E0" not in config:
             raise RuntimeError(
@@ -65,8 +70,8 @@ class LargeBeamAbsorbingLayerGreensFunction:
             self.exp = numpy.exp
 
     def __call__(
-            self, z: float | mp.mpf | Q_, r : float|mp.mpf, tp: float | mp.mpf | Q_
-    ) -> float | mp.mpf:
+        self, z: float | mp.mpf | Q_, r: float | mp.mpf | Q_, tp: float | mp.mpf | Q_
+    ) -> float | mp.mpf | Q_:
         if self.use_approximate:
             if tp > 0:
                 arg1 = (z - self.z0) ** 2 / (4 * self.alpha * tp)
@@ -164,7 +169,9 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
             for param in ["R"]:
                 setattr(self, param, mp.mpf(getattr(self, param)))
 
-    def __call__(self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None) -> float | mp.mpf:
+    def __call__(
+        self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None
+    ) -> float | mp.mpf:
         # special conditions
         # if the sensor is outside of the beam at t = 0,
         # the temperature rise will be zero
@@ -178,35 +185,41 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
             return zfactor
 
         if r == 0:
-        # If we want the temperature on the z axis, it is _much_
-        # faster to call the exp(...) function instead of MarcumQFunction.
+            # If we want the temperature on the z axis, it is _much_
+            # faster to call the exp(...) function instead of MarcumQFunction.
             rfactor = 1 - self.exp(-(self.R**2) / 4 / self.alpha / tp)
         else:
-        # If we are calculating the temperature off axis, we have no choice
-        # but to call the expensive function
-        # TODO: add support for calling a WASM-commpiled version of this function. Initial testing indicates
-        #       it could be 10x faster.
-            rfactor = 1 - MarcumQFunction(1,r/self.sqrt(2*self.alpha*tp),self.R/self.sqrt(2*self.alpha*tp))
+            # If we are calculating the temperature off axis, we have no choice
+            # but to call the expensive function
+            # TODO: add support for calling a WASM-commpiled version of this function. Initial testing indicates
+            #       it could be 10x faster.
+            rfactor = 1 - MarcumQFunction(
+                1,
+                r / self.sqrt(2 * self.alpha * tp),
+                self.R / self.sqrt(2 * self.alpha * tp),
+            )
 
-        return zfactor*rfactor
+        return zfactor * rfactor
 
 
 class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFunction):
     def __init__(self, config: dict) -> None:
         super().__init__(config)
 
-    def __call__(self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None) -> float | mp.mpf:
+    def __call__(
+        self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None
+    ) -> float | mp.mpf:
         zfactor = super().__call__(z, r, tp)
 
         if r == 0:
-            rfactor = 1 / (1 + 4*self.alpha*tp/self.R**2)
+            rfactor = 1 / (1 + 4 * self.alpha * tp / self.R**2)
         else:
-            tmp1 = 1 / (1 + 4*self.alpha*tp/self.R**2)
-            tmp2 = (self.R**2/4/self.alpha/tp)
+            tmp1 = 1 / (1 + 4 * self.alpha * tp / self.R**2)
+            tmp2 = self.R**2 / 4 / self.alpha / tp
 
-            rfactor = tmp1 * self.exp(tmp2*(tmp1 - 1))
+            rfactor = tmp1 * self.exp(tmp2 * (tmp1 - 1))
 
-        return zfactor*rfactor
+        return zfactor * rfactor
 
 
 class MultiLayerGreensFunction:
@@ -228,6 +241,8 @@ class MultiLayerGreensFunction:
         for layer in sorted(
             config["layers"], key=lambda l: Q_(l["z0"]).to("cm").magnitude
         ):
+            # create a config dict that we will pass to the layer
+            # and fill in the keys needed by a layer
             c = copy.copy(layer)
             c.update(config["thermal"])
             c.update(
@@ -241,14 +256,15 @@ class MultiLayerGreensFunction:
             )
             if "R" in config["laser"] and config["laser"]["R"] is not None:
                 c["R"] = config["laser"]["R"]
-                if config['laser'].get("profile", "flattop").lower() == "flattop":
+                if config["laser"].get("profile", "flattop").lower() == "flattop":
                     G = FlatTopBeamAbsorbingLayerGreensFunction(c)
-                elif config['laser'].get("profile").lower() == "gaussian":
+                elif config["laser"].get("profile").lower() == "gaussian":
                     G = GaussianBeamAbsorbingLayerGreensFunction(c)
             else:
                 G = LargeBeamAbsorbingLayerGreensFunction(c)
             self.layers.append(G)
 
+            # Need to reduce the incident irradiance according to Beer's Law
             mua = Q_(layer["mua"]).to("1/cm")
             d = Q_(layer["d"]).to("cm")
             if not self.with_units:
@@ -268,8 +284,10 @@ class MultiLayerGreensFunction:
                         f"ERROR: Layer {i} overlaps with layer {i-1}. z_{i} = {self.layers[i].z0}, z_{i-1} + d_{i-1} = {self.layers[i-1].z0 + self.layers[i-1].d}"
                     )
 
-    def __call__(self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None) -> float | mp.mpf:
-        return sum([G(z,r,tp) for G in self.layers])
+    def __call__(
+        self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None
+    ) -> float | mp.mpf:
+        return sum([G(z, r, tp) for G in self.layers])
 
 
 class GreensFunctionIntegrator:
@@ -282,10 +300,10 @@ class GreensFunctionTrapezoidIntegrator(GreensFunctionIntegrator):
         super().__init__(G)
         self.dt = Q_(0.1, "us")
 
-    def temperature_rise_on_grid(self, z, tmin, tmax, dt):
+    def temperature_rise_on_grid(self, z, r, tmin, tmax, dt):
         """Compute the temperature rise at uniformly spaced times so that we can build the temperature rise caused by an exposure."""
         t = numpy.arange(tmin, tmax + 2 * dt, dt)
-        T = numpy.vectorize(lambda x: self.G(z, x))(t)
+        T = numpy.vectorize(lambda x: self.G(z,r, x))(t)
         T = scipy.integrate.cumulative_trapezoid(T, t)
         return t[:-1], T
 
@@ -300,7 +318,7 @@ class GreensFunctionTrapezoidIntegrator(GreensFunctionIntegrator):
         tmin = min(ts)
         tmax = max(ts)
         dt = self.dt.to("s").magnitude
-        t, dTheta = self.temperature_rise_on_grid(z, tmin, tmax, dt)
+        t, dTheta = self.temperature_rise_on_grid(z, r, tmin, tmax, dt)
 
         ton = Q_(config.get("ton", "0 s")).to("s").magnitude
         tau = Q_(config.get("tau", "1 year")).to("s").magnitude
@@ -359,7 +377,7 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
             subinterval_range = (tmax - tmin) / num_subintervals
 
         def f(tp):
-            return self.G(z,r,tp)
+            return self.G(z, r, tp)
 
         subinterval_values = numpy.zeros([num_subintervals])
         for i in range(num_subintervals):
@@ -411,7 +429,6 @@ class CWRetinaLaserExposure:
         self.start = Q_(config.get("laser", {}).get("start", "0 s")).to("s")
         self.duration = Q_(config.get("laser", {}).get("duration", "1 year")).to("s")
 
-
     def make_integrator_config(self):
         config = {
             "tau": self.duration,
@@ -420,7 +437,11 @@ class CWRetinaLaserExposure:
         return config
 
     def temperature_rise(
-            self, z: float | mp.mpf, r: float | mp.mpf, t: list[float] | list[mp.mpf], method="trap"
+        self,
+        z: float | mp.mpf,
+        r: float | mp.mpf,
+        t: list[float] | list[mp.mpf],
+        method="trap",
     ):
         Integrator = None
         if method == "trap":
@@ -446,7 +467,6 @@ class PulsedRetinaLaserExposure(CWRetinaLaserExposure):
         self.exposure_duration = self.duration
         self.pulse_duration = Q_(config["laser"]["pulse_duration"]).to("s")
         self.pulse_period = Q_(config["laser"].get("pulse_period", "1 year")).to("s")
-
 
     def make_integrator_config(self):
         config = {
