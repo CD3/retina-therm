@@ -1,6 +1,5 @@
 import pprint
 import pytest
-import matplotlib.pyplot as plt
 import numpy
 
 import retina_therm.config_utils
@@ -164,6 +163,7 @@ def test_marcum_q_function():
 
 #
 # def test_marcum_q_function_performance():
+#     import matplotlib.pyplot as plt
 #     N = 10
 #     duration = timeit.Timer(lambda : retina_therm.utils.MarcumQFunction(1,0,1)).timeit(number=N)
 #     marcum_runtime=duration/N

@@ -42,7 +42,7 @@ def test_cw_retina_exposure():
         }
     )
 
-    T = exp.temperature_rise(0, numpy.arange(0, 100e-6, 1e-6), method="trap")
+    T = exp.temperature_rise(0, 0, numpy.arange(0, 100e-6, 1e-6), method="trap")
     # need to find some actual values to compare against, these are just values
     # that were produced at one point but change when any adjustments are made intenrally...
     # assert T[-1] == pytest.approx(9.992091714864e-6)
@@ -73,9 +73,9 @@ def test_cw_retina_exposure():
         }
     )
 
-    T1 = exp.temperature_rise(0, numpy.arange(0, 100e-6, 1e-6), method="trap")[-1]
-    T2 = exp.temperature_rise(0, numpy.arange(0, 50e-6, 1e-6), method="trap")[-1]
-    T3 = exp2.temperature_rise(0, numpy.arange(0, 100e-6, 1e-6), method="trap")
+    T1 = exp.temperature_rise(0, 0, numpy.arange(0, 100e-6, 1e-6), method="trap")[-1]
+    T2 = exp.temperature_rise(0, 0, numpy.arange(0, 50e-6, 1e-6), method="trap")[-1]
+    T3 = exp2.temperature_rise(0, 0, numpy.arange(0, 100e-6, 1e-6), method="trap")
     # see not above..
     # assert T3[-1] == pytest.approx(T1 - T2)
 
@@ -108,6 +108,6 @@ def test_gf_integrators():
     )
     integrator = greens_functions.GreensFunctionTrapezoidIntegrator(G)
     T = integrator.temperature_rise(
-        0, numpy.arange(0, 0.001, 0.0001), {"duration": "0.001 s"}
+        0, 0, numpy.arange(0, 0.001, 0.0001), {"duration": "0.001 s"}
     )
     assert len(T) == 10
