@@ -17,6 +17,8 @@ scipy = "^1.11.3"
 pint = "^0.22"
 fspathtree = "^0.8"
 p-tqdm = "^1.4.0"
+tissue-properties = "^0.0.1"
+pydantic = "^2.5.3"
 
 
 [tool.poetry.group.dev.dependencies]
