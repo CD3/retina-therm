@@ -303,7 +303,7 @@ class GreensFunctionTrapezoidIntegrator(GreensFunctionIntegrator):
     def temperature_rise_on_grid(self, z, r, tmin, tmax, dt):
         """Compute the temperature rise at uniformly spaced times so that we can build the temperature rise caused by an exposure."""
         t = numpy.arange(tmin, tmax + 2 * dt, dt)
-        T = numpy.vectorize(lambda x: self.G(z,r, x))(t)
+        T = numpy.vectorize(lambda x: self.G(z, r, x))(t)
         T = scipy.integrate.cumulative_trapezoid(T, t)
         return t[:-1], T
 
