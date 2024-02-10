@@ -70,6 +70,7 @@ R: 3 mm
     assert config.R.magnitude == pytest.approx(0.3)
 
 
+
 def test_MultiLayerGreensFunctionConfig():
     laser_config = Laser(**{"profile": "gaussian", "R": "1 cm"})
     assert laser_config.profile == "gaussian"
@@ -112,3 +113,18 @@ def test_MultiLayerGreensFunctionConfig():
     assert config.laser.profile == "flattop"
     assert config.thermal.rho.magnitude == pytest.approx(1)
     assert config.layers[0].d.magnitude == pytest.approx(10e-4)
+
+def test_LaserSchema():
+    laser_config = Laser(**{"profile": "gaussian", "R": "1 cm"})
+    assert laser_config.D.magnitude == pytest.approx(2)
+    laser_config.D = Q_(1,'cm')
+    assert laser_config.R.magnitude == pytest.approx(0.5)
+
+
+    laser_config = Laser(**{"profile": "gaussian", "D": "1 cm"})
+    assert laser_config.R.magnitude == pytest.approx(0.5)
+    #
+    #
+    # with pytest.raises(Exception):
+    #     laser_config = Laser(**{"profile": "gaussian", "q": "1 cm"})
+    #

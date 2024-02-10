@@ -6,7 +6,7 @@ Schemas for parsing and validating model configurations.
 from typing import Annotated, Any, List, Literal, TypeVar
 
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, Field,
-                      GetCoreSchemaHandler, PlainSerializer, WithJsonSchema)
+                      GetCoreSchemaHandler, PlainSerializer, WithJsonSchema, model_validator)
 from pydantic_core import CoreSchema, core_schema
 
 from .units import Q_
@@ -37,7 +37,37 @@ class Laser(BaseModel):
         Literal["gaussian"] | Literal["flattop"],
         BeforeValidator(lambda x: x.lower().replace(" ", "")),
     ]
-    R: QuantityWithUnit("cm")
+    R: QuantityWithUnit("cm") = None
+
+    # allow user to specify diameter D instead of radius R
+    # create a field named "D_"" that will be used internally.
+    # user will pass "D"
+    D_: QuantityWithUnit("cm") = Field(alias="D",default=None)
+
+    # create property named "D" that the user can use if they want.
+    @property
+    def D(self):
+        return self.R*2
+    @D.setter
+    def D(self,val):
+        self.R = val/2
+
+    # create a model validator that will check that one of "R" or "D"
+    # were passed in and set the other.
+    @model_validator(mode='after')
+    def check_R_or_D(self) -> 'Laser':
+        print(self.R,self.D_)
+        if self.R is None and self.D_ is None:
+                raise ValueError("One of 'R' or 'D' must be given.")
+        if self.R:
+            self.D_ = self.R * 2
+        else:
+            self.R = self.D_ / 2
+
+        return self
+
+
+
 
 
 class ThermalProperties(BaseModel):
