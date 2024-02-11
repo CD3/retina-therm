@@ -12,48 +12,22 @@ from .utils import MarcumQFunction
 
 
 class LargeBeamAbsorbingLayerGreensFunction:
-    def __init__(self, config: dict) -> None:
-        if "mua" not in config:
-            raise RuntimeError(
-                "'mua' missing: No absorption coefficient given in config for Green's function."
-            )
-        if "rho" not in config:
-            raise RuntimeError(
-                "'rho' missing: No density given in config for Green's function."
-            )
-        if "c" not in config:
-            raise RuntimeError(
-                "'c' missing: No specific heat in config for Green's function."
-            )
-        if "k" not in config:
-            raise RuntimeError(
-                "'k' missing: No thermal conductivity in config for Green's function."
-            )
-        if "E0" not in config:
-            raise RuntimeError(
-                "'E0' missing: No incident irradiance in config for Green's function."
-            )
-        if "d" not in config:
-            raise RuntimeError(
-                "'d' missing: No layer thickness in config for Green's function."
-            )
-        if "z0" not in config:
-            raise RuntimeError(
-                "'z0' missing: No layer position in config for Green's function."
-            )
+    def __init__(self, config: dict|LargeBeamAbsorbingLayerGreensFunctionConfig) -> None:
+        if type(config) == dict:
+            config = LargeBeamAbsorbingLayerGreensFunctionConfig(**config)
 
-        self.mua = Q_(config["mua"]).to("1/cm")
-        self.k = Q_(config["k"]).to("W/cm/K")
-        self.rho = Q_(config["rho"]).to("g/cm^3")
-        self.c = Q_(config["c"]).to("J/g/K")
-        self.E0 = Q_(config["E0"]).to("W/cm^2")
-        self.d = Q_(config["d"]).to("cm")
-        self.z0 = Q_(config["z0"]).to("cm")
+        self.mua = config.mua
+        self.k = config.k
+        self.rho = config.rho
+        self.c = config.c
+        self.E0 = config.E0
+        self.d = config.d
+        self.z0 = config.z0
         self.alpha = self.k / self.rho / self.c
 
-        self.with_units = config.get("with_units", False)
-        self.use_multi_precision = config.get("use_multi_precision", False)
-        self.use_approximate = config.get("use_approximate", True)
+        self.with_units = config.with_units
+        self.use_multi_precision = config.use_multi_precision
+        self.use_approximate = config.use_approximate
         if not self.with_units:
             for param in ["mua", "k", "rho", "c", "E0", "d", "z0", "alpha"]:
                 setattr(self, param, getattr(self, param).magnitude)
@@ -150,17 +124,13 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
 
     pass
 
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict|FlatTopBeamAbsorbingLayerGreensFunctionConfig) -> None:
+        if type(config) == dict:
+            config = FlatTopBeamAbsorbingLayerGreensFunctionConfig(**config)
         super().__init__(config)
-        if "R" not in config or config["R"] is None:
-            raise RuntimeError(
-                "'R' missing: No beam radius given in config for Green's function."
-            )
 
-        self.R = Q_(config["R"]).to("cm")
+        self.R = config.R
 
-        self.with_units = config.get("with_units", False)
-        self.use_multi_precision = config.get("use_multi_precision", False)
         if not self.with_units:
             for param in ["R"]:
                 setattr(self, param, getattr(self, param).magnitude)
@@ -203,7 +173,7 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
 
 
 class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFunction):
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict|GaussianBeamAbsorbingLayerGreensFunctionConfig) -> None:
         super().__init__(config)
 
     def __call__(
@@ -223,7 +193,9 @@ class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFu
 
 
 class MultiLayerGreensFunction:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict|MultiLayerGreensFunctionConfig) -> None:
+        if type(config) == dict:
+            pass
         self.with_units = config.get("with_units", False)
         self.use_multi_precision = config.get("use_multi_precision", False)
         if self.use_multi_precision:
