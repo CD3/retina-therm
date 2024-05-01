@@ -12,7 +12,9 @@ from .utils import MarcumQFunction
 
 
 class LargeBeamAbsorbingLayerGreensFunction:
-    def __init__(self, config: dict|LargeBeamAbsorbingLayerGreensFunctionConfig) -> None:
+    def __init__(
+        self, config: dict | LargeBeamAbsorbingLayerGreensFunctionConfig
+    ) -> None:
         if type(config) == dict:
             config = LargeBeamAbsorbingLayerGreensFunctionConfig(**config)
 
@@ -124,7 +126,9 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
 
     pass
 
-    def __init__(self, config: dict|FlatTopBeamAbsorbingLayerGreensFunctionConfig) -> None:
+    def __init__(
+        self, config: dict | FlatTopBeamAbsorbingLayerGreensFunctionConfig
+    ) -> None:
         if type(config) == dict:
             config = FlatTopBeamAbsorbingLayerGreensFunctionConfig(**config)
         super().__init__(config)
@@ -173,7 +177,9 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
 
 
 class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFunction):
-    def __init__(self, config: dict|GaussianBeamAbsorbingLayerGreensFunctionConfig) -> None:
+    def __init__(
+        self, config: dict | GaussianBeamAbsorbingLayerGreensFunctionConfig
+    ) -> None:
         super().__init__(config)
 
     def __call__(
@@ -193,7 +199,7 @@ class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFu
 
 
 class MultiLayerGreensFunction:
-    def __init__(self, config: dict|MultiLayerGreensFunctionConfig) -> None:
+    def __init__(self, config: dict | MultiLayerGreensFunctionConfig) -> None:
         if type(config) == dict:
             pass
         self.with_units = config.get("with_units", False)
