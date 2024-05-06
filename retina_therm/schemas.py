@@ -36,7 +36,7 @@ class Layer(BaseModel):
 
 class Laser(BaseModel):
     profile: Annotated[
-        Literal["gaussian"] | Literal["flattop"] | Literal['1d'],
+        Literal["gaussian"] | Literal["flattop"] | Literal["1d"],
         BeforeValidator(lambda x: x.lower().replace(" ", "")),
     ]
     R: QuantityWithUnit("cm") = None
@@ -61,7 +61,9 @@ class Laser(BaseModel):
     @model_validator(mode="after")
     def check_R_or_D(self) -> "Laser":
         if self.profile != "1d" and self.R is None and self.D_ is None:
-            raise ValueError("One of 'R' or 'D' must be given for '{self.profile}' profile.")
+            raise ValueError(
+                "One of 'R' or 'D' must be given for '{self.profile}' profile."
+            )
         if self.R:
             self.D_ = self.R * 2
         else:
@@ -85,9 +87,9 @@ class LargeBeamAbsorbingLayerGreensFunctionConfig(BaseModel):
     z0: QuantityWithUnit("cm")
     E0: QuantityWithUnit("W/cm^2")
 
-    with_units:bool = False
-    use_multi_precision:bool = False
-    use_approximate:bool = True
+    with_units: bool = False
+    use_multi_precision: bool = False
+    use_approximations: bool = True
 
 
 class FlatTopBeamAbsorbingLayerGreensFunctionConfig(
@@ -102,15 +104,22 @@ class GaussianBeamAbsorbingLayerGreensFunctionConfig(
     pass
 
 
+class PrecisionConfig(BaseModel):
+    use_multi_precision: bool
+    use_approximations: bool
+    with_units: bool
+
+
 class MultiLayerGreensFunctionConfig(BaseModel):
     laser: Laser
     thermal: ThermalProperties
     layers: List[Layer]
+    # simulation: PrecisionConfig
 
 
 def get_AbsorbingLayerGreensFunctionConfig_json(
     config: MultiLayerGreensFunctionConfig, layer_index: int
-    ) -> dict:
+) -> dict:
     assert layer_index < len(config.layers)
 
     E0 = config.laser.E0
@@ -120,41 +129,57 @@ def get_AbsorbingLayerGreensFunctionConfig_json(
         E0 *= math.exp(-(config.layers[i].mua * config.layers[i].d).to(""))
 
     return {
-            "rho": str(config.thermal.rho),
-            "c": str(config.thermal.c),
-            "k": str(config.thermal.k),
-            "d": str(config.layers[layer_index].d),
-            "z0": str(config.layers[layer_index].z0),
-            "mua": str(config.layers[layer_index].mua),
-            "E0": str(E0),
-            "R": str(config.laser.R),
-        }
+        "rho": str(config.thermal.rho),
+        "c": str(config.thermal.c),
+        "k": str(config.thermal.k),
+        "d": str(config.layers[layer_index].d),
+        "z0": str(config.layers[layer_index].z0),
+        "mua": str(config.layers[layer_index].mua),
+        "E0": str(E0),
+        "R": str(config.laser.R),
+    }
+
 
 def make_LargeBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
     config: MultiLayerGreensFunctionConfig, layer_index: int
 ) -> LargeBeamAbsorbingLayerGreensFunctionConfig:
     return LargeBeamAbsorbingLayerGreensFunctionConfig(
-            **get_AbsorbingLayerGreensFunctionConfig_json(config,layer_index)
-            )
+        **get_AbsorbingLayerGreensFunctionConfig_json(config, layer_index)
+    )
 
 
 def make_FlatTopBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
     config: MultiLayerGreensFunctionConfig, layer_index: int
 ) -> FlatTopBeamAbsorbingLayerGreensFunctionConfig:
     return FlatTopBeamAbsorbingLayerGreensFunctionConfig(
-            **get_AbsorbingLayerGreensFunctionConfig_json(config,layer_index)
-            )
+        **get_AbsorbingLayerGreensFunctionConfig_json(config, layer_index)
+    )
+
+
 def make_GaussianBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-        config: MultiLayerGreensFunctionConfig, layer_index: int)->GaussianBeamAbsorbingLayerGreensFunctionConfig:
+    config: MultiLayerGreensFunctionConfig, layer_index: int
+) -> GaussianBeamAbsorbingLayerGreensFunctionConfig:
     return GaussianBeamAbsorbingLayerGreensFunctionConfig(
-            **get_AbsorbingLayerGreensFunctionConfig_json(config,layer_index)
-            )
+        **get_AbsorbingLayerGreensFunctionConfig_json(config, layer_index)
+    )
+
 
 def make_AbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-        config: MultiLayerGreensFunctionConfig, layer_index: int) -> GaussianBeamAbsorbingLayerGreensFunctionConfig|FlatTopBeamAbsorbingLayerGreensFunctionConfig|LargeBeamAbsorbingLayerGreensFunctionConfig:
+    config: MultiLayerGreensFunctionConfig, layer_index: int
+) -> (
+    GaussianBeamAbsorbingLayerGreensFunctionConfig
+    | FlatTopBeamAbsorbingLayerGreensFunctionConfig
+    | LargeBeamAbsorbingLayerGreensFunctionConfig
+):
     if config.laser.profile == "gaussian":
-        return make_GaussianBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(config,layer_index)
+        return make_GaussianBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
+            config, layer_index
+        )
     if config.laser.profile == "flattop":
-        return make_FlatTopBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(config,layer_index)
+        return make_FlatTopBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
+            config, layer_index
+        )
     if config.laser.profile == "1d":
-        return make_LargeBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(config,layer_index)
+        return make_LargeBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
+            config, layer_index
+        )
