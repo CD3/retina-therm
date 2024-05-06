@@ -29,7 +29,7 @@ class LargeBeamAbsorbingLayerGreensFunction:
 
         self.with_units = config.with_units
         self.use_multi_precision = config.use_multi_precision
-        self.use_approximate = config.use_approximate
+        self.use_approximations = config.use_approximations
         if not self.with_units:
             for param in ["mua", "k", "rho", "c", "E0", "d", "z0", "alpha"]:
                 setattr(self, param, getattr(self, param).magnitude)
@@ -48,17 +48,17 @@ class LargeBeamAbsorbingLayerGreensFunction:
     def __call__(
         self, z: float | mp.mpf | Q_, r: float | mp.mpf | Q_, tp: float | mp.mpf | Q_
     ) -> float | mp.mpf | Q_:
-        if self.use_approximate:
+        if self.use_approximations:
             if tp > 0:
                 arg1 = (z - self.z0) ** 2 / (4 * self.alpha * tp)
                 arg2 = (z - (self.z0 + self.d)) ** 2 / (4 * self.alpha * tp)
                 thresh = Q_(0.1, "")
+                # use the approximation for exp(-(1/x)**2) if 1/x
                 if not self.with_units:
                     thresh = thresh.magnitude
                 if arg1 < thresh and arg2 < thresh:
                     # some terms that are used multiple times
-                    exp_mua_z0 = self.exp(-self.mua * self.z0)
-                    exp_mua_z0_d = self.exp(-self.mua * (self.z0 + self.d))
+                    exp_mua_d = self.exp(-self.mua * self.d)
                     four_alpha_tp = 4 * self.alpha * tp
 
                     # see writeup, there three factors that need to be multiplied
@@ -66,26 +66,26 @@ class LargeBeamAbsorbingLayerGreensFunction:
 
                     const_factor = self.E0 / self.rho / self.c
                     time_factor = 1 / self.sqrt(numpy.pi * four_alpha_tp)
-                    term1 = exp_mua_z0 - exp_mua_z0_d
+                    term1 = 1 - exp_mua_d
 
                     factor21 = 2 * z**2 / four_alpha_tp
                     factor22 = term1
                     term2 = factor21 * factor22
 
                     factor31 = 2 * z / four_alpha_tp
-                    factor32_term1 = (self.z0 + 1 / self.mua) * exp_mua_z0
-                    factor32_term2 = (self.z0 + self.d + 1 / self.mua) * exp_mua_z0_d
+                    factor32_term1 = self.z0 + 1 / self.mua
+                    factor32_term2 = (self.z0 + self.d + 1 / self.mua) * exp_mua_d
                     term3 = factor31 * (factor32_term1 - factor32_term2)
 
                     factor41 = 1 / four_alpha_tp
                     factor42_term1 = (
                         self.z0**2 + 2 * self.z0 / self.mua + 2 / self.mua**2
-                    ) * exp_mua_z0
+                    )
                     factor42_term2 = (
                         (self.z0 - self.d) ** 2
                         + 2 * (self.z0 + self.d) / self.mua
                         + 2 / self.mua**2
-                    ) * exp_mua_z0_d
+                    ) * exp_mua_d
                     term4 = factor41 * (factor42_term1 - factor42_term2)
 
                     low_order_approx = const_factor * time_factor * term1
@@ -99,7 +99,7 @@ class LargeBeamAbsorbingLayerGreensFunction:
                     return approx
 
         term1 = self.mua * self.E0 / self.rho / self.c / 2
-        term2 = self.exp(-self.mua * z)
+        term2 = self.exp(-self.mua * (z - self.z0))
         if tp == 0:
             return term1 * term2
 
@@ -123,8 +123,6 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
     The Green's function for a flat top beam is just the same as a large beam with an additional
     term for the radial part.
     """
-
-    pass
 
     def __init__(
         self, config: dict | FlatTopBeamAbsorbingLayerGreensFunctionConfig
@@ -181,6 +179,8 @@ class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFu
         self, config: dict | GaussianBeamAbsorbingLayerGreensFunctionConfig
     ) -> None:
         super().__init__(config)
+        if type(config) == dict:
+            config = GaussianBeamAbsorbingLayerGreensFunctionConfig(**config)
 
     def __call__(
         self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None
@@ -200,10 +200,17 @@ class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFu
 
 class MultiLayerGreensFunction:
     def __init__(self, config: dict | MultiLayerGreensFunctionConfig) -> None:
-        if type(config) == dict:
-            pass
-        self.with_units = config.get("with_units", False)
-        self.use_multi_precision = config.get("use_multi_precision", False)
+        # if type(config) == dict:
+        #     config = MultiLayerGreensFunctionConfig(**config)
+
+        self.with_units = config.get("simulation", {}).get("with_units", False)
+        self.use_multi_precision = config.get("simulation", {}).get(
+            "with_multi_precision", False
+        )
+        self.use_approximations = config.get("simulation", {}).get(
+            "use_approximations", False
+        )
+
         if self.use_multi_precision:
             self.erf = mp.erf
             self.sqrt = mp.sqrt
@@ -225,18 +232,23 @@ class MultiLayerGreensFunction:
             c.update(config["thermal"])
             c.update(
                 {
-                    "use_multi_precision": config.get("simulation", {}).get(
-                        "use_multi_precision", False
-                    ),
-                    "with_units": config.get("simulation", {}).get("with_units", False),
+                    "use_multi_precision": self.use_multi_precision,
+                    "with_units": self.with_units,
                     "E0": str(E0),
                 }
             )
+
             if "R" in config["laser"] and config["laser"]["R"] is not None:
                 c["R"] = config["laser"]["R"]
-                if config["laser"].get("profile", "flattop").lower() == "flattop":
+                if (
+                    config["laser"].get("profile", "flattop").lower().replace(" ", "")
+                    == "flattop"
+                ):
                     G = FlatTopBeamAbsorbingLayerGreensFunction(c)
-                elif config["laser"].get("profile").lower() == "gaussian":
+                elif (
+                    config["laser"].get("profile").lower().replace(" ", "")
+                    == "gaussian"
+                ):
                     G = GaussianBeamAbsorbingLayerGreensFunction(c)
             else:
                 G = LargeBeamAbsorbingLayerGreensFunction(c)
@@ -396,6 +408,10 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
 
 
 class CWRetinaLaserExposure:
+    """
+    Class for configuring and computing the temperature rise from a CW exposure to a retina model.
+    """
+
     def __init__(self, config: dict) -> None:
         self.G = MultiLayerGreensFunction(config)
 
