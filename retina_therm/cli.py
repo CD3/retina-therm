@@ -7,6 +7,8 @@ from typing import Annotated
 import numpy
 import rich
 import scipy
+import tissue_properties.optical.absorption_coefficient.schulmeister
+import tissue_properties.optical.ocular_transmission.schulmeister
 import typer
 import yaml
 from fspathtree import fspathtree
@@ -23,6 +25,18 @@ app = typer.Typer()
 
 invoked_subcommand = None
 config_filename_stem = None
+
+
+class models:
+    class schulmeister:
+        class mua:
+            RPE = tissue_properties.optical.absorption_coefficient.schulmeister.RPE()
+            HenlesFiberLayer = (
+                tissue_properties.optical.absorption_coefficient.schulmeister.HenlesFiberLayer()
+            )
+            Choroid = (
+                tissue_properties.optical.absorption_coefficient.schulmeister.Choroid()
+            )
 
 
 @app.callback()
@@ -71,7 +85,6 @@ def load_config(config_file: Path, overrides: list[str]):
         raise typer.Exit(f"File '{config_file}' not found.")
     with open(config_file, "r") as f:
         config = yaml.safe_load(f)
-
 
     config = fspathtree(config)
 
@@ -128,7 +141,7 @@ def relaxation_time_job(config: fspathtree) -> None:
 
     t = utils.bisect(lambda t: G(z, r, t) - Tth, i_min * dt, i_max * dt)
     t = sum(t) / 2
-    T = G(z,r, t)
+    T = G(z, r, t)
 
     stdout.write(f"time: {mp.nstr(mp.mpf(t), 5)}\n")
     stdout.write(f"Temperature: {mp.nstr(T, 5)}\n")
@@ -181,7 +194,7 @@ def impulse_response_job(config):
     r = units.Q_(r).to("cm").magnitude
     i = 0
     t = i * dt
-    T = G(z,r, t)
+    T = G(z, r, t)
     Tp = T
     Tth = threshold * Tp
 
@@ -190,7 +203,7 @@ def impulse_response_job(config):
         datout.write(f"{t} {T}\n")
         i += 1
         t = i * dt
-        T = G(z,r,t)
+        T = G(z, r, t)
     datout.write(f"{t} {T}\n\n")
 
 
@@ -231,9 +244,38 @@ def impulse_response(
 temperature_rise_integration_methods = ["quad", "trap"]
 
 
+def compute_tissue_properties(config):
+    """
+    Loops through all tissue property config keys and checks if parameter
+    was given as a model instead of a specific value. If so, we call the model
+    and replace the parameter value with the result of model.
+    """
+    for layer in config.get("layers", []):
+        if "{wavelength}" in layer["mua"]:
+            if "laser/wavelength" not in config:
+                raise RuntimeError(
+                    "Config must include `laser/wavelength` to compute absorption coefficient."
+                )
+            mua = eval(
+                layer["mua"].format(wavelength="'" + config["/laser/wavelength"] + "'")
+            )
+            layer["mua"] = str(mua)  # schema validators expect strings for quantities
+    return config
+
+
 def temperature_rise_job(config):
+    config = compute_tissue_properties(config)
     stdout, stderr, datout = get_output_streams(config)
     stdout.write(str(config.tree) + "\n")
+    if "laser/profile" not in config:
+        config["laser/profile"] = "flattop"
+    if "simulation/with_units" not in config:
+        config["simulation/with_units"] = False
+    if "simulation/use_approximations" not in config:
+        config["simulation/with_approximations"] = False
+    if "simulation/use_multi_precision" not in config:
+        config["simulation/with_multi_precision"] = False
+
     if "laser/pulse_duration" not in config:
         G = greens_functions.CWRetinaLaserExposure(config.tree)
     else:
@@ -254,7 +296,7 @@ def temperature_rise_job(config):
             [units.Q_(time).to("s").magnitude for time in config["simulation/time/ts"]]
         )
 
-    method = config.get("temperature_rise/method", "quad")
+    method = config.get("simulation/temperature_rise/method", "quad")
 
     print("Computing temperature rise")
     T = G.temperature_rise(z, r, t, method=method)
@@ -276,7 +318,9 @@ def temperature_rise(
             help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
         ),
     ] = [],
-    method: Annotated[str, typer.Option(help="Integration method to use.")] = "quad",
+    method: Annotated[
+        str, typer.Option(help="Integration method to use.")
+    ] = "undefined",
     list_methods: Annotated[
         bool, typer.Option(help="List the avaiable integration methods.")
     ] = False,
@@ -286,7 +330,7 @@ def temperature_rise(
         for m in temperature_rise_integration_methods:
             print("  ", m)
         raise typer.Exit(0)
-    if method not in temperature_rise_integration_methods:
+    if method not in temperature_rise_integration_methods + ["undefined"]:
         rich.print(f"[red]Unrecognized integration method '{method}'[/red]")
         rich.print(
             f"[red]Please use one of {', '.join(temperature_rise_integration_methods)}[/red]"
@@ -298,7 +342,8 @@ def temperature_rise(
     configs = load_config(config_file, override)
     jobs = []
     for config in configs:
-        config["temperature_rise/method"] = method
+        if method != "undefined":
+            config["simulation/temperature_rise/method"] = method
         jobs.append(
             multiprocessing.Process(target=temperature_rise_job, args=(config,))
         )
