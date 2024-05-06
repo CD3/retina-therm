@@ -24,6 +24,7 @@ tissue-properties = "^0.1.0"
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.2"
 pudb = "^2023.1"
+pytest-benchmark = "^4.0.0"
 
 [build-system]
 requires = ["poetry-core"]
