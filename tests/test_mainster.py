@@ -132,7 +132,6 @@ def test_compare_to_mainter_temperature_rises_calculations_for_flattop_profile()
     E0 = units.Q_("1 W/cm^2")
 
     for size in ["10 um", "25 um", "50 um", "100 um", "500 um", "1000 um"]:
-        print(size)
         config = {
             "use_approximate": True,
             "use_multi_precision": False,
