@@ -52,7 +52,7 @@ class LargeBeamAbsorbingLayerGreensFunction:
             if tp > 0:
                 arg1 = (z - self.z0) ** 2 / (4 * self.alpha * tp)
                 arg2 = (z - (self.z0 + self.d)) ** 2 / (4 * self.alpha * tp)
-                thresh = Q_(0.1, "")
+                thresh = Q_(0.01, "")
                 # use the approximation for exp(-(1/x)**2) if 1/x
                 if not self.with_units:
                     thresh = thresh.magnitude
@@ -232,6 +232,7 @@ class MultiLayerGreensFunction:
             c.update(config["thermal"])
             c.update(
                 {
+                    "use_approximations": self.use_approximations,
                     "use_multi_precision": self.use_multi_precision,
                     "with_units": self.with_units,
                     "E0": str(E0),
