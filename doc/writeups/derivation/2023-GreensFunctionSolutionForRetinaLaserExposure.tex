@@ -252,60 +252,137 @@ Inserting the approximation into Equation \ref{eq:flattop_temp}
   \dd t'
 \end{align}
 
-\subsubsection{For short time}
 
+\subsection{For large absorption}
+The approximation in the previous section for long times has been implemented, and it works, however it does not solve the problem. Evaluating the $z$ integral without approximation leads to
+\begin{equation*}
+	e^{\alpha t' \mu_a^2} \qty[	
+	\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a )].
+\end{equation*}
+The issue is that as $t'$ increases, $e^{\alpha t' \mu_a^2}$ becomes very large. The difference between the two error functions becomes small, so the product of the two remains finite (it actually decreases with time).
+However, trying to compute the two terms separately leads to floating point overflow. In Python, both the standard math module and numpy overflow when passing an argument greater than about 700 to the exp function. For
+visible light, the absorption coefficient of the RPE can be on the order of \SI{1000}{\per\centi\meter}, which means (assuming the thermal properties of water, $\alpha = \SI{0.0015}{\centi\meter\squared\per\second}$)
+that we will get an overflow when $t' > \SI{0.46}{\second}$.This is much too short a time to simulate a laser exposure. But even before an overflow, we will get a loss of precision.
 
-When $t'$ is small, then $1/t'$ becomes very large. For flat top beams, the temperature rise is given by
+The problem with the long-time approximation is that it is valid when $(z'-z_0)/4\alpha t' \ll 1$, which does not depend on the absorption coefficient at all. So its possible to overflow with a large absorption coefficient
+before the approximation can be employed.
+
+Instead, it is possible to approximate the result of the integral using an asymptotic expansion for the error function
+\begin{equation}
+	\erf(x) = 1 - \erfc(x) = 1 - \frac{e^{-x^2}}{x\sqrt{\pi}} \sum_{n=0}^{\infty} (-1)^n \frac{(2n-1)!!}{(2x^2)^n} =1 - \frac{e^{-x^2}}{x\sqrt{\pi}} +  \frac{e^{-x^2}}{x\sqrt{\pi}} \frac{1}{2 x^2} - \mathcal{O}( 1/x^5).
+\end{equation}
+This approximation of the error function works for "large" values, however, the argument does not need to be that "large". Keeping only the first two terms gives less than 0.1 error for $x >  0.88$. $x>1.38$ gives an error less
+than 0.01, $x>1.86$ gives and error less than 0.001, and $x>2.28$ give an error less than 0.0001. Keeping the third term reduces the values of $x$ to 0.92, 1.30, 1.69, and 2.07 to reach these error threshold. Looking at the arguments
+of the two error functions, there are two terms. The first gets smaller with time, the second gets larger. The second term is the only one that depends on $\mu_a$. If we assume that the first term is small, then we can estimate
+the time at which the 2 term asymptotic expansion would give less than 0.001 error as $1.86 = \sqrt{\alpha t'} \mu_a$. For $\mu_a = \SI{1000}{\per\centi\meter}$, this gives $t' = \SI{0.001}{\second}$.
+
+To simplify the algebra, let us define the following variables:
+\begin{align*}
+	A &= \sqrt{\alpha t'} \mu_a \\
+	B &= \frac{z_0 - z}{\sqrt{4\alpha t'}} \\
+	C &= \frac{d}{\sqrt{4\alpha t'}} 
+\end{align*}
+Then the product we want to approximate can be written
+\begin{align*}
+e^{A^2} \qty[
+\erf\qty(C + B + A ) - \erf\qty(B + A)
+].
+\end{align*}
+The issue is $e^{A^2}$, it will overflow at short times. If we only had $e^A$, then we would not get an overflow until $t' = \SI{326}{\second}$, which should be sufficient for most laser exposures, sine we would expect to reach steady-state long before that time.
 
 \begin{align*}
-	T(r=0, z,t) =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a (z-z_0)} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
-	\times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ]  \\
-	\times & \qty[1 - e^{-R^2/4\alpha t'} ]
-	\dd t'
+	(A+B+C)^2 &= A^2 + B^2 + C^2 + 2AB + 2AC + 2BC \\
+	(A+B)^2 &= A^2 + B^2 + 2AB \\
+	e^{A^2} \qty[\erf\qty(C + B + A ) - \erf\qty(B + A)] &=
+	e^{A^2} \qty[
+	\qty(1 - \frac{e^{-(A^2+B^2+C^2+2AB+2AC+2BC)}}{(A+B+C)\sqrt{\pi}}\sum\cdots)
+	 - 
+	 \qty(1 - \frac{e^{-(A^2+B^2+2AB)}}{(A+B)\sqrt{\pi}}\sum\cdots)
+	 	] \\
+	 	&= 	 
+	 	 \frac{-e^{-(B^2+C^2+2AB+2AC+2BC)}}{(A+B+C)\sqrt{\pi}}\sum\cdots
+	 	+ 
+		 \frac{e^{-(B^2+2AB)}}{(A+B)\sqrt{\pi}}\sum\cdots
+	 	 \\
+	 	 	 	&= 	 
+	 	  \frac{e^{-(B^2+2AB)}}{(A+B)\sqrt{\pi}}\qty[1 - \frac{1}{2\qty(A+B)^2}+\ldots]
+	 	 -
+	 	 \frac{e^{-(B^2+C^2+2AB+2AC+2BC)}}{(A+B+C)\sqrt{\pi}}\qty[1 - \frac{1}{2\qty(A+B+C)^2}+\ldots]
+	 	 	 	 \\
 \end{align*}
-The first term in the integral can be expanded in a Taylor series for the exponential function,
-\begin{equation}
-	e^x = \sum_{n=0}^{\infty} \frac{1}{n!} x^n = 1 + x + \frac{1}{2} x^2 + \mathcal{O}(x^n)
-\end{equation}
-where $x = \alpha t' \mu_a^2$.
+This gives us way to calculate the product without having to evaluate $e^{A^2}$ and cause an overflow. We have the following
+\begin{align*}
+	A^2 &= \alpha t' \mu_a^2 \\
+	B^2 &= \frac{(z_0 - z)^2}{4\alpha t'} \\
+	C^2 &= \frac{d^2}{4\alpha t'} \\
+	2AB&= 2\sqrt{\alpha t'} \mu_a  \frac{z_0 - z}{\sqrt{4\alpha t'}} = \qty(z_0 - z)\mu_a\\
+	2AC&= 2\sqrt{\alpha t'} \mu_a  \frac{d}{\sqrt{4\alpha t'}} = d\mu_a\\
+	2BC&= 2\frac{z_0 - z}{\sqrt{4\alpha t'}}  \frac{d}{\sqrt{4\alpha t'}} = \frac{d\qty(z_0 - z)}{2\alpha t'}\\
+\end{align*}
+substituting in
+\begin{align*}
+		e^{\alpha t' \mu_a^2} \qty[	
+	\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a )]	&= 	 
+	\frac{e^{-\qty(\frac{(z_0 - z)^2}{4\alpha t'}+\frac{d^2}{4\alpha t'}+\qty(z_0 - z)\mu_a+d\mu_a+\frac{d\qty(z_0 - z)}{2\alpha t'})}}{(  \sqrt{\alpha t'} \mu_a+\frac{z_0 - z}{\sqrt{4\alpha t'}}+\frac{d}{\sqrt{4\alpha t'}})\sqrt{\pi}}\sum\cdots\\
+	&- 
+	\frac{e^{-\qty(\frac{(z_0 - z)^2}{4\alpha t'}+\qty(z_0 - z)\mu_a)}}{(\sqrt{\alpha t'} \mu_a+\frac{z_0 - z}{\sqrt{4\alpha t'}})\sqrt{\pi}}\sum\cdots
+	\\
+\end{align*}
 
-The time at which we can truncate this series to approximate the exponential depends on $\alpha$ and $\mu_a$. $\alpha$ is the thermal diffusivity. When this parameter is large, heat
-flows through the tissue quickly. When the absorption coefficient $\mu_a$ is large, there will be a steep thermal gradient in the axial direction in the absorbing tissue, which will cause
-a faster heat flow. Physically then, this series can be truncated when heat has not had significant time to conduct out of the absorption volume.
-
-Keeping only the first two terms will give an error of about \SI{1}{\percent} or less when $\alpha t' \mu_a^2 \le 0.15$. Keeping the first three terms will give an error of about \SI{1}{\percent} or less when
-$\alpha t' \mu_a^2 \le 0.44$.
-
-The second term in the integral can be expanded using a Taylor series approximation if the argument to the error function is small, or the asymptotic expansion of $\erfc(x)$ if the argument is large.
-
-The Taylor series expansion of $\erf(x)$ is
-\begin{equation}
-	\erf(x) = \frac{2}{\sqrt{\pi}} \sum_{n=0}^\infty \frac{(-1)^n x^{2n+1}} { n! (2n+1)} = \frac{2}{\sqrt{\pi}} e^{-x^2} \sum_{n=0}^{\infty} \frac{2^n x^{2n+1}}{(2n+1)!!}
-\end{equation}
-where $N!!$ is the double factorial, the product of all odd numbers up to $N$. 
-The first form gives
-\begin{equation}
-	\erf(x) = \frac{2x}{\sqrt{\pi}} - \frac{2x^3}{3\sqrt{\pi}}   + \frac{2x^5}{10\sqrt{\pi}}  + \mathcal{O}(x^7).
-\end{equation}
-The second from gives
-\begin{equation}
-	\erf(x) = \frac{2x}{\sqrt{\pi}} e^{-x^2} + \frac{4x^3}{3\sqrt{\pi}} e^{-x^2}  + \frac{8x^5}{15\sqrt{\pi}} e^{-x^2}+  \mathcal{O}(x^7).
-\end{equation}
-The first form gives a more accurate approximation for larger arguments. Keeping only the first term gives and error of about \SI{1}{\percent} or less for $x \le 0.17$ using the first form and $x \le 0.12$ for the second. Keeping the first two terms give an error of about \SI{1}{\percent} or less for $x \le 0.56$ for the first form and $x \le 0.45$ for the second.
-
-	
-The asymptotic expansion of $\erfc(x)$ is
-\begin{equation}
-	\erfc(x) = \frac{e^{-x^2}}{x\sqrt{\pi}} \sum_{n=0}^{\infty} (-1)^n \frac{(2n-1)!!}{(2x^2)^n}.
-\end{equation}
-For the error function,
-\begin{equation}
-	\erf(x) = 1 - \erfc(x) = 1 - \frac{e^{-x^2}}{x\sqrt{\pi}} +  \frac{e^{-x^2}}{x\sqrt{\pi}} \frac{1}{2 x^2} - \mathcal{O}( 1/x^5).
-\end{equation}
-Keeping the first two terms in this series gives an error of about \SI{1}{\percent} or less when $x \ge 1.39$. Keeping the first three gives a \SI{1}{\percent} error or less around $x \ge 1.3$.
-
-Using the lowest order approximations for the expon
-
+%\subsubsection{For short time}
+%
+%
+%When $t'$ is small, then $1/t'$ becomes very large. For flat top beams, the temperature rise is given by
+%
+%\begin{align*}
+%	T(r=0, z,t) =& \frac{\mu_aE_0}{2\rho c}e^{-\mu_a (z-z_0)} \int_0^t e^{\alpha t'\mu_a^2}  \nonumber \\
+%	\times & \qty[\erf\qty(\frac{z_0 + d - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) - \erf\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) ]  \\
+%	\times & \qty[1 - e^{-R^2/4\alpha t'} ]
+%	\dd t'
+%\end{align*}
+%The first term in the integral can be expanded in a Taylor series for the exponential function,
+%\begin{equation}
+%	e^x = \sum_{n=0}^{\infty} \frac{1}{n!} x^n = 1 + x + \frac{1}{2} x^2 + \mathcal{O}(x^n)
+%\end{equation}
+%where $x = \alpha t' \mu_a^2$.
+%
+%The time at which we can truncate this series to approximate the exponential depends on $\alpha$ and $\mu_a$. $\alpha$ is the thermal diffusivity. When this parameter is large, heat
+%flows through the tissue quickly. When the absorption coefficient $\mu_a$ is large, there will be a steep thermal gradient in the axial direction in the absorbing tissue, which will cause
+%a faster heat flow. Physically then, this series can be truncated when heat has not had significant time to conduct out of the absorption volume.
+%
+%Keeping only the first two terms will give an error of about \SI{1}{\percent} or less when $\alpha t' \mu_a^2 \le 0.15$. Keeping the first three terms will give an error of about \SI{1}{\percent} or less when
+%$\alpha t' \mu_a^2 \le 0.44$.
+%
+%The second term in the integral can be expanded using a Taylor series approximation if the argument to the error function is small, or the asymptotic expansion of $\erfc(x)$ if the argument is large.
+%
+%The Taylor series expansion of $\erf(x)$ is
+%\begin{equation}
+%	\erf(x) = \frac{2}{\sqrt{\pi}} \sum_{n=0}^\infty \frac{(-1)^n x^{2n+1}} { n! (2n+1)} = \frac{2}{\sqrt{\pi}} e^{-x^2} \sum_{n=0}^{\infty} \frac{2^n x^{2n+1}}{(2n+1)!!}
+%\end{equation}
+%where $N!!$ is the double factorial, the product of all odd numbers up to $N$. 
+%The first form gives
+%\begin{equation}
+%	\erf(x) = \frac{2x}{\sqrt{\pi}} - \frac{2x^3}{3\sqrt{\pi}}   + \frac{2x^5}{10\sqrt{\pi}}  + \mathcal{O}(x^7).
+%\end{equation}
+%The second from gives
+%\begin{equation}
+%	\erf(x) = \frac{2x}{\sqrt{\pi}} e^{-x^2} + \frac{4x^3}{3\sqrt{\pi}} e^{-x^2}  + \frac{8x^5}{15\sqrt{\pi}} e^{-x^2}+  \mathcal{O}(x^7).
+%\end{equation}
+%The first form gives a more accurate approximation for larger arguments. Keeping only the first term gives and error of about \SI{1}{\percent} or less for $x \le 0.17$ using the first form and $x \le 0.12$ for the second. Keeping the first two terms give an %error of about \SI{1}{\percent} or less for $x \le 0.56$ for the first form and $x \le 0.45$ for the second.
+%
+%	
+%The asymptotic expansion of $\erfc(x)$ is
+%\begin{equation}
+%	\erfc(x) = \frac{e^{-x^2}}{x\sqrt{\pi}} \sum_{n=0}^{\infty} (-1)^n \frac{(2n-1)!!}{(2x^2)^n}.
+%\end{equation}
+%For the error function,
+%\begin{equation}
+%	\erf(x) = 1 - \erfc(x) = 1 - \frac{e^{-x^2}}{x\sqrt{\pi}} +  \frac{e^{-x^2}}{x\sqrt{\pi}} \frac{1}{2 x^2} - \mathcal{O}( 1/x^5).
+%\end{equation}
+%Keeping the first two terms in this series gives an error of about \SI{1}{\percent} or less when $x \ge 1.39$. Keeping the first three gives a \SI{1}{\percent} error or less around $x \ge 1.3$.
+%
+%Using the lowest order approximations for the expon
+%
 %\begin{equation}
 %	(1 + \alpha \mu_a^2 t') \times \qty(\qty( 1 - \frac{e^{-\qty(\frac{d+z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a)^2}}{\qty(\frac{d+z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a)\sqrt{\pi}}) - 
 %\frac{2\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a)e^{-\qty(\frac{z_0 - z}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a)^2}}{\sqrt{\pi}} )
