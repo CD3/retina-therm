@@ -48,11 +48,18 @@ class LargeBeamAbsorbingLayerGreensFunction:
     def __call__(
         self, z: float | mp.mpf | Q_, r: float | mp.mpf | Q_, tp: float | mp.mpf | Q_
     ) -> float | mp.mpf | Q_:
-        if self.use_approximations:
+
+
+        if self.use_approximations and False:
+            # Large time approximation...
+            # This approximates the exponential in the integrand (before integration)
+            # and then integrates. The problem is that mua is not accounted for at all,
+            # so it is possible for this approximatin to be "valid", but not good if mua is large.
+            # We we are disabling it
             if tp > 0:
                 arg1 = (z - self.z0) ** 2 / (4 * self.alpha * tp)
                 arg2 = (z - (self.z0 + self.d)) ** 2 / (4 * self.alpha * tp)
-                thresh = Q_(0.01, "")
+                thresh = Q_(0.1, "")
                 # use the approximation for exp(-(1/x)**2) if 1/x
                 if not self.with_units:
                     thresh = thresh.magnitude
@@ -103,6 +110,32 @@ class LargeBeamAbsorbingLayerGreensFunction:
         if tp == 0:
             return term1 * term2
 
+        if self.use_approximations:
+            # Asymptotic approximation for erf
+            # This approximation is valid when the arguments to the error function
+            # are greater than about 2. But we don't really need to use it that early.
+            # we get reasonable error when the arguments are >= 4.
+            A = self.mua*(self.alpha*tp)**0.5
+            B = (self.z0 - z) / (4*self.alpha*tp)**0.5
+            C = self.d / (4*self.alpha*tp)**0.5
+            # We will get an overflow if A^2 > about 700
+            if A+B+C > 4 and A+B > 4:
+                B2 = B*B
+                C2 = C*C
+                _2AB = 2*A*B
+                _2AC = 2*A*C
+                _2BC = 2*B*C
+
+                factor1 = self.exp(-B2-_2AB) / (A+B) / self.sqrt(numpy.pi)# * ( 1 - 1/2/(A+B)**2)
+                factor2 = self.exp(-B2-C2-_2AB-_2AC-_2BC) / (A+B+C) / self.sqrt(numpy.pi)# * ( 1 - 1/2/(A+B+C)**2)
+                term3 = factor1-factor2
+
+                return term1*term2*term3
+
+
+
+
+
         term3 = self.exp(self.alpha * tp * self.mua**2)
         arg1 = (self.z0 + self.d - z) / self.sqrt(4 * self.alpha * tp) + self.sqrt(
             self.alpha * tp
@@ -115,7 +148,7 @@ class LargeBeamAbsorbingLayerGreensFunction:
             arg2 = arg2.magnitude
         term4 = self.erf(arg1) - self.erf(arg2)
 
-        return term1 * term2 * term3 * term4
+        return term1 * term2 * term3 * term4 
 
 
 class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunction):
