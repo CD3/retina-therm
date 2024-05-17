@@ -16,7 +16,7 @@ from mpmath import mp
 from tqdm import tqdm
 
 import retina_therm
-from retina_therm import greens_functions, units, utils
+from retina_therm import greens_functions, multi_pulse_builder, units, utils
 
 from . import config_utils, utils
 
@@ -104,6 +104,31 @@ def load_config(config_file: Path, overrides: list[str]):
             if type(c[k]) is str and c[k].lower() in ["none", "null"]:
                 c[k] = None
         config_utils.compute_missing_parameters(c)
+
+    return configs
+
+
+def load_multi_pulse_config(config_file: Path, overrides: list[str]):
+    if not config_file.exists():
+        raise typer.Exit(f"File '{config_file}' not found.")
+    with open(config_file, "r") as f:
+        config = yaml.safe_load(f)
+
+    config = fspathtree(config)
+
+    for item in overrides:
+        k, v = [tok.strip() for tok in item.split("=", maxsplit=1)]
+        if k not in config:
+            sys.stderr.write(
+                f"Warning: {k} was not in the config file, so it is being set, not overriden."
+            )
+        config[k] = v
+
+    configs = config_utils.batch_expand(config)
+    for c in configs:
+        for k in c.get_all_leaf_node_paths():
+            if type(c[k]) is str and c[k].lower() in ["none", "null"]:
+                c[k] = None
 
     return configs
 
@@ -415,3 +440,100 @@ def multipulse_microcavitation_threshold(
         for n in range(1, N):
             H = (m * T0 - m * Tnuc) / (1 - m * units.Q_(T[n - 1], "K/(J/cm^2)"))
             stdout.write(f"{n} {H}\n")
+
+
+def multiple_pulse_job(config):
+    print("Loading multiple-pulse configuration file")
+    input_file = Path(config["input_file"])
+    data = numpy.loadtxt(config["input_file"])
+    t = data[:, 0]
+    T = data[:, 1]
+
+    builder = multi_pulse_builder.MultiPulseBuilder()
+    builder.set_temperature_history(t, T)
+
+    # if a pulse duration is given, then it means we have a CW exposure
+    # and we need to create the single pulse exposure by adding a -1 scale
+    if "/tau" in config:
+        builder.add_contribution(0, 1)
+        builder.add_contribution(units.Q_(config["tau"]).to("s").magnitude, -1)
+        Tsp = builder.build()
+        builder.set_temperature_history(t, Tsp)
+        builder.clear_contributions()
+
+    contributions = []
+    if "/contributions" in config:
+        for c in config["/contributions"]:
+            contributions.append(
+                {
+                    "arrival_time": units.Q_(c["arrival_time"]).to("s").magnitude,
+                    "scale": float(c["scale"]),
+                }
+            )
+    if "/T" not in config:
+        config["/T"] = "{:~}".format(units.Q_(t[-1], "s"))
+
+    if "/t0" in config:
+        t0 = units.Q_(config["/t0"])
+        prf = (1 / t0).to("Hz")
+        T = units.Q_(config["/T"])
+        config["/prf"] = f"{prf:~}"
+
+        if "/N" not in config:
+            N = (T * prf).magnitude
+            config["/N"] = f"{N:.2f}"
+
+        N = units.Q_(config["/N"])
+
+        arrival_time = units.Q_(0, "s")
+        n = 0
+        while arrival_time.to("s").magnitude < t[-1] and n < N:
+            contributions.append(
+                {"arrival_time": arrival_time.to("s").magnitude, "scale": 1}
+            )
+            arrival_time += t0
+            n += 1
+
+    for c in contributions:
+        builder.add_contribution(c["arrival_time"], c["scale"])
+
+    print("Building temperature history")
+    Tmp = builder.build()
+
+    print("Writing temperature history")
+
+    data[:, 1] = Tmp
+
+    output_filename = config.get("output_file", "{input_file_stem}-MP.txt")
+    ctx = {
+        "input_filename_stem": input_file.stem,
+        "tau": config.get("/tau", "None").replace(" ", "_"),
+        "t0": config.get("/t0", "None").replace(" ", "_"),
+        "prf": config.get("/prf", "None").replace(" ", "_"),
+        "PRF": config.get("/prf", "None").replace(" ", "_"),
+        "N": config.get("/N", "None"),
+        "n": config.get("/N", "None"),
+        "T": config.get("/T", "None").replace(" ", "_"),
+    }
+    output_filename = output_filename.format(**ctx)
+    numpy.savetxt(output_filename, data)
+
+
+@app.command()
+def multiple_pulse(
+    config_file: Path,
+    override: Annotated[
+        list[str],
+        typer.Option(
+            help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
+        ),
+    ] = [],
+):
+    configs = load_multi_pulse_config(config_file, override)
+    jobs = []
+    for config in configs:
+        jobs.append(multiprocessing.Process(target=multiple_pulse_job, args=(config,)))
+    for job in jobs:
+        job.start()
+    for job in jobs:
+        job.join()
