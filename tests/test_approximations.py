@@ -43,21 +43,21 @@ def test_axial_part_retina_long_time_approx():
     )
     assert G_exact(0, 0, 0.0) == pytest.approx(G_approx(0, 0, 0.0))
     assert type(G_exact(0, 0, 0.0)) == mp.mpf
-    assert type(G_approx(0, 0, 0.0)) == numpy.float64
+    assert type(G_approx(0, 0, 0.0)) == float # numpy.float64
 
     assert G_exact(0, 0, 0.01) == pytest.approx(G_approx(0, 0, 0.01), rel=0.001)
     assert type(G_exact(0, 0, 0.01)) == mp.mpf
-    assert type(G_approx(0, 0, 0.01)) == numpy.float64
+    assert type(G_approx(0, 0, 0.01)) == float # numpy.float64
 
     with mp.workdps(200):
         assert G_exact(0, 0, 0.2) == pytest.approx(G_approx(0, 0, 0.2), rel=0.001)
         assert type(G_exact(0, 0, 0.2)) == mp.mpf
-        assert type(G_approx(0, 0, 0.2)) == numpy.float64
+        assert type(G_approx(0, 0, 0.2)) == float # numpy.float64
 
     with mp.workdps(2000):
         assert G_exact(0, 0, 2) == pytest.approx(G_approx(0, 0, 2), rel=0.001)
         assert type(G_exact(0, 0, 2)) == mp.mpf
-        assert type(G_approx(0, 0, 2)) == numpy.float64
+        assert type(G_approx(0, 0, 2)) == float # numpy.float64
 
     with mp.workdps(200):
         assert G_exact(-0.001, 0, 0.2) == pytest.approx(
@@ -67,7 +67,7 @@ def test_axial_part_retina_long_time_approx():
     with mp.workdps(2000):
         assert G_exact(0, 0, 2) == pytest.approx(G_approx(0, 0, 2), rel=0.001)
         assert type(G_exact(0, 0, 2)) == mp.mpf
-        assert type(G_approx(0, 0, 2)) == numpy.float64
+        assert type(G_approx(0, 0, 2)) == float # numpy.float64
 
     
     with open("Tvsz-exact_vs_approx.txt", "w") as f:

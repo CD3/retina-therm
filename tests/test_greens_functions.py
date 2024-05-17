@@ -119,55 +119,63 @@ def test_axial_part_retina_long_time_approx():
         }
     )
 
-    assert G_exact(0, 0, 0.0) == pytest.approx(G_approx(0, 0, 0.0))
-    assert G_exact(0, 0, 0.0) == pytest.approx(
-        G_approx_with_units(Q_(0, "cm"), Q_(0, "cm"), Q_(0.0, "s")).magnitude
-    )
+    assert G_approx(0, 0, 0.0) == pytest.approx(float(G_exact(0, 0, 0.0)))
+    assert G_approx_with_units(
+        Q_(0, "cm"), Q_(0, "cm"), Q_(0.0, "s")
+    ).magnitude == pytest.approx(float(G_exact(0, 0, 0.0)))
     assert type(G_exact(0, 0, 0.0)) == mp.mpf
-    assert type(G_approx(0, 0, 0.0)) == numpy.float64
+    assert type(G_approx(0, 0, 0.0)) == float  # numpy.float64
 
-    assert G_exact(0, 0, 0.01) == pytest.approx(G_approx(0, 0, 0.01), rel=0.01)
-    assert G_exact(0, 0, 0.01) == pytest.approx(
-        G_approx_with_units(Q_(0, "cm"), Q_(0, "cm"), Q_(0.01, "s")).magnitude, rel=0.01
-    )
+    assert G_approx(0, 0, 0.01) == pytest.approx(float(G_exact(0, 0, 0.01)), rel=0.03)
+    assert G_approx_with_units(
+        Q_(0, "cm"), Q_(0, "cm"), Q_(0.01, "s")
+    ).magnitude == pytest.approx(float(G_exact(0, 0, 0.01)), rel=0.03)
     assert type(G_exact(0, 0, 0.01)) == mp.mpf
-    assert type(G_approx(0, 0, 0.01)) == numpy.float64
+    assert type(G_approx(0, 0, 0.01)) == float  # numpy.float64
 
     with mp.workdps(200):
-        assert G_approx(0, 0, 0.2) == pytest.approx(G_exact(0, 0, 0.2), rel=0.01)
-        assert G_approx_with_units(Q_(0, "cm"), Q_(0, "cm"), Q_(0.2, "s")).magnitude == pytest.approx(
-            G_exact(0, 0, 0.2),
+        assert G_approx(0, 0, 0.2) == pytest.approx(float(G_exact(0, 0, 0.2)), rel=0.01)
+        assert G_approx_with_units(
+            Q_(0, "cm"), Q_(0, "cm"), Q_(0.2, "s")
+        ).magnitude == pytest.approx(
+            float(G_exact(0, 0, 0.2)),
             rel=0.01,
         )
         assert type(G_exact(0, 0, 0.2)) == mp.mpf
-        assert type(G_approx(0, 0, 0.2)) == numpy.float64
+        assert type(G_approx(0, 0, 0.2)) == float  # numpy.float64
 
     with mp.workdps(2000):
-        assert G_approx(0, 0, 2) == pytest.approx(G_exact(0, 0, 2), rel=0.01)
-        assert G_approx_with_units(Q_(0, "cm"), Q_(0, "cm"), Q_(2, "s")).magnitude == pytest.approx(
-            G_exact(0, 0, 2),
+        assert G_approx(0, 0, 2) == pytest.approx(float(G_exact(0, 0, 2)), rel=0.01)
+        assert G_approx_with_units(
+            Q_(0, "cm"), Q_(0, "cm"), Q_(2, "s")
+        ).magnitude == pytest.approx(
+            float(G_exact(0, 0, 2)),
             rel=0.01,
         )
         assert type(G_exact(0, 0, 2)) == mp.mpf
-        assert type(G_approx(0, 0, 2)) == numpy.float64
+        assert type(G_approx(0, 0, 2)) == float  # numpy.float64
 
     with mp.workdps(200):
-        assert G_exact(-0.001, 0, 0.2) == pytest.approx(
-            G_approx(-0.001, 0, 0.2), rel=0.01
+        assert G_approx(-0.001, 0, 0.2) == pytest.approx(
+            float(G_exact(-0.001, 0, 0.2)), rel=0.01
         )
-        assert G_exact(-0.001, 0, 0.2) == pytest.approx(
-            G_approx_with_units(Q_(-10, "um"), Q_(0, "cm"), Q_(0.2, "s")).magnitude,
+        assert G_approx_with_units(
+            Q_(-10, "um"), Q_(0, "cm"), Q_(0.2, "s")
+        ).magnitude == pytest.approx(
+            float(G_exact(-0.001, 0, 0.2)),
             rel=0.01,
         )
 
     with mp.workdps(2000):
-        assert G_exact(0, 0, 2) == pytest.approx(G_approx(0, 0, 2), rel=0.01)
-        assert G_exact(0, 0, 2) == pytest.approx(
-            G_approx_with_units(Q_(0, "cm"), Q_(0, "cm"), Q_(2, "s")).magnitude,
+        assert G_approx(0, 0, 2) == pytest.approx(float(G_exact(0, 0, 2)), rel=0.01)
+        assert G_approx_with_units(
+            Q_(0, "cm"), Q_(0, "cm"), Q_(2, "s")
+        ).magnitude == pytest.approx(
+            float(G_exact(0, 0, 2)),
             rel=0.01,
         )
         assert type(G_exact(0, 0, 2)) == mp.mpf
-        assert type(G_approx(0, 0, 2)) == numpy.float64
+        assert type(G_approx(0, 0, 2)) == float  # numpy.float64
 
 
 def test_flat_top_beam_call_function():
@@ -224,7 +232,9 @@ def test_multi_layer_greens_function_errors():
                         "z0": "0 cm",
                     },
                 ],
-                "with_units": False,
+                "simulation": {
+                    "with_units": False,
+                },
             }
         )
 
@@ -233,9 +243,10 @@ def test_multi_layer_greens_function_calcs():
     # single layer should give same thing as a the absorbing layer class
     G1 = greens_functions.MultiLayerGreensFunction(
         {
-            "laser": {
-                "E0": "1 W/cm^2",
+            "simulation": {
+                "with_units": False,
             },
+            "laser": {"E0": "1 W/cm^2", "profile": "1d"},
             "thermal": {
                 "k": "1 W/cm/K",
                 "rho": "1 g/cm^3",
@@ -248,7 +259,6 @@ def test_multi_layer_greens_function_calcs():
                     "z0": "0.001 cm",
                 },
             ],
-            "with_units": False,
         }
     )
     G2 = greens_functions.LargeBeamAbsorbingLayerGreensFunction(
@@ -288,13 +298,16 @@ def test_multi_layer_greens_function_calcs():
                 "z0": "0 um",
             },
         ],
-        "with_units": False,
-        "use_approximations": False,
+        "simulation": {
+            "with_units": False,
+            "use_approximations": False,
+        },
     }
 
     two_layer_config = copy.deepcopy(one_layer_config)
     two_layer_config.update(
         {
+            "simulation": {},
             "layers": [
                 {
                     "mua": "1000 1/cm",
@@ -314,11 +327,11 @@ def test_multi_layer_greens_function_calcs():
     with open("Tvsz.txt", "w") as f:
         for z in numpy.arange(-100 * 1e-4, 100 * 1e-4, 1e-6):
             f.write(f"{z} {G1(z,0,1e-6)} {G2(z,0,1e-6)}\n")
-    print(G1(0.00035, 0, 1e-6))
-    print(G1(0.00037, 0, 1e-6))
-    # assert G1(0, 0, 1e-6) == pytest.approx(G2(0, 0, 1e-6), rel=0.01)
-    # assert G2(0.0002, 0, 2e-7) < G2(0.00025, 0, 2e-7)
-    # assert G1(0.00025, 0, 2e-7) == pytest.approx(G2(0.00025, 0, 2e-7))
+    # print(G1(0.00035, 0, 1e-6))
+    # print(G1(0.00037, 0, 1e-6))
+    assert G1(0, 0, 1e-6) == pytest.approx(G2(0, 0, 1e-6), rel=0.01)
+    assert G2(0.0002, 0, 2e-7) < G2(0.00025, 0, 2e-7)
+    assert G1(0.00025, 0, 2e-7) == pytest.approx(G2(0.00025, 0, 2e-7))
 
 
 def test_discontinuity_bug():

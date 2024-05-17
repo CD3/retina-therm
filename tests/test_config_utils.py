@@ -4,7 +4,7 @@ import pytest
 from retina_therm import config_utils
 
 
-def test_batch_expansion():
+def test_batch_expansion_single_vars():
     config = config_utils.fspathtree(
         {"one": 1, "two": {"@batch": [2, 3]}, "three": {"vals": {"@batch": [3, 4]}}}
     )
@@ -33,3 +33,4 @@ def test_batch_expansion():
     assert configs[3]["/one"] == 1
     assert configs[3]["/two"] == 3
     assert configs[3]["/three/vals"] == 4
+

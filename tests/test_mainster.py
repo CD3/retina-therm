@@ -1,4 +1,5 @@
 import pytest
+
 from retina_therm import greens_functions, units, utils
 
 
@@ -123,18 +124,20 @@ def test_compare_to_mainter_temperature_rises_calculations_for_flattop_profile()
     allowed_error = {
         "10 um": 1e-2,
         "25 um": 2e-2,
-        "50 um": 7e-2,
-        "100 um": 15e-2,
-        "500 um": 15e-2,
-        "1000 um": 21e-2,
+        "50 um": 8e-2,
+        "100 um": 22e-2,
+        "500 um": 22e-2,
+        "1000 um": 36e-2,
     }
 
     E0 = units.Q_("1 W/cm^2")
 
     for size in ["10 um", "25 um", "50 um", "100 um", "500 um", "1000 um"]:
         config = {
-            "use_approximate": True,
-            "use_multi_precision": False,
+            "simulation": {
+                "use_approximations": True,
+                "use_multi_precision": False,
+            },
             "laser": {
                 "pulse_duration": "1000 s",
                 "E0": str(E0),

@@ -40,16 +40,20 @@ class LargeBeamAbsorbingLayerGreensFunction:
             self.erf = mp.erf
             self.sqrt = mp.sqrt
             self.exp = mp.exp
-        else:
+        elif self.with_units:
             self.erf = scipy.special.erf
             self.sqrt = numpy.sqrt
             self.exp = numpy.exp
+        else:
+            # the math module implementations seem to be faster based on test_benchmarks...
+            # hyperfine benchmarks of the cli also seem to indicate a speedup
+            self.erf = math.erf
+            self.sqrt = math.sqrt
+            self.exp = math.exp
 
     def __call__(
         self, z: float | mp.mpf | Q_, r: float | mp.mpf | Q_, tp: float | mp.mpf | Q_
     ) -> float | mp.mpf | Q_:
-
-
         if self.use_approximations and False:
             # Large time approximation...
             # This approximates the exponential in the integrand (before integration)
@@ -115,28 +119,35 @@ class LargeBeamAbsorbingLayerGreensFunction:
             # This approximation is valid when the arguments to the error function
             # are greater than about 2. But we don't really need to use it that early.
             # we get reasonable error when the arguments are >= 4.
-            A = self.mua*(self.alpha*tp)**0.5
-            B = (self.z0 - z) / (4*self.alpha*tp)**0.5
-            C = self.d / (4*self.alpha*tp)**0.5
+            A = self.mua * (self.alpha * tp) ** 0.5
+            B = (self.z0 - z) / (4 * self.alpha * tp) ** 0.5
+            C = self.d / (4 * self.alpha * tp) ** 0.5
             # We will get an overflow if A^2 > about 700
-            if A+B+C > 4 and A+B > 4:
-                B2 = B*B
-                C2 = C*C
-                _2AB = 2*A*B
-                _2AC = 2*A*C
-                _2BC = 2*B*C
+            if A + B + C > 4 and A + B > 4:
+                B2 = B * B
+                C2 = C * C
+                _2AB = 2 * A * B
+                _2AC = 2 * A * C
+                _2BC = 2 * B * C
 
-                factor1 = self.exp(-B2-_2AB) / (A+B) / self.sqrt(numpy.pi)# * ( 1 - 1/2/(A+B)**2)
-                factor2 = self.exp(-B2-C2-_2AB-_2AC-_2BC) / (A+B+C) / self.sqrt(numpy.pi)# * ( 1 - 1/2/(A+B+C)**2)
-                term3 = factor1-factor2
+                factor1 = (
+                    self.exp(-B2 - _2AB) / (A + B) / self.sqrt(numpy.pi)
+                )  # * ( 1 - 1/2/(A+B)**2)
+                factor2 = (
+                    self.exp(-B2 - C2 - _2AB - _2AC - _2BC)
+                    / (A + B + C)
+                    / self.sqrt(numpy.pi)
+                )  # * ( 1 - 1/2/(A+B+C)**2)
+                term3 = factor1 - factor2
 
-                return term1*term2*term3
+                return term1 * term2 * term3
 
-
-
-
-
-        term3 = self.exp(self.alpha * tp * self.mua**2)
+        # this has a (good) chance of overflowing if we are using floats
+        # if it is going to overflow then we want to set it to inf. this is what numpy does
+        try:
+            term3 = self.exp(self.alpha * tp * self.mua**2)
+        except OverflowError:
+            term3 = float("inf")
         arg1 = (self.z0 + self.d - z) / self.sqrt(4 * self.alpha * tp) + self.sqrt(
             self.alpha * tp
         ) * self.mua
@@ -148,7 +159,7 @@ class LargeBeamAbsorbingLayerGreensFunction:
             arg2 = arg2.magnitude
         term4 = self.erf(arg1) - self.erf(arg2)
 
-        return term1 * term2 * term3 * term4 
+        return term1 * term2 * term3 * term4
 
 
 class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunction):
@@ -162,7 +173,7 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
     ) -> None:
         if type(config) == dict:
             config = FlatTopBeamAbsorbingLayerGreensFunctionConfig(**config)
-        super().__init__(config)
+        super().__init__(config.model_dump())
 
         self.R = config.R
 
@@ -211,9 +222,9 @@ class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFu
     def __init__(
         self, config: dict | GaussianBeamAbsorbingLayerGreensFunctionConfig
     ) -> None:
-        super().__init__(config)
         if type(config) == dict:
             config = GaussianBeamAbsorbingLayerGreensFunctionConfig(**config)
+        super().__init__(config.model_dump())
 
     def __call__(
         self, z: float | mp.mpf, r: float | mp.mpf, tp: float | mp.mpf = None
@@ -233,64 +244,59 @@ class GaussianBeamAbsorbingLayerGreensFunction(FlatTopBeamAbsorbingLayerGreensFu
 
 class MultiLayerGreensFunction:
     def __init__(self, config: dict | MultiLayerGreensFunctionConfig) -> None:
-        # if type(config) == dict:
-        #     config = MultiLayerGreensFunctionConfig(**config)
+        if type(config) == dict:
+            config = MultiLayerGreensFunctionConfig(**config)
 
-        self.with_units = config.get("simulation", {}).get("with_units", False)
-        self.use_multi_precision = config.get("simulation", {}).get(
-            "with_multi_precision", False
-        )
-        self.use_approximations = config.get("simulation", {}).get(
-            "use_approximations", False
-        )
+        self.with_units = config.simulation.with_units
+        self.use_multi_precision = config.simulation.use_multi_precision
+        self.use_approximations = config.simulation.use_approximations
 
         if self.use_multi_precision:
             self.erf = mp.erf
             self.sqrt = mp.sqrt
             self.exp = mp.exp
-        else:
+        elif self.with_units:
             self.erf = scipy.special.erf
-            self.sqrt = numpy.sqrt
+            self.sqrt =numpy.sqrt
             self.exp = numpy.exp
+        else:
+            # the math module implementations seem to be faster based on test_benchmarks...
+            # hyperfine benchmarks of the cli also seem to indicate a speedup
+            self.erf = math.erf
+            self.sqrt = math.sqrt
+            self.exp = math.exp
 
         self.layers = []
 
-        E0 = Q_(config["laser"]["E0"]).to("W/cm^2")
-        for layer in sorted(
-            config["layers"], key=lambda l: Q_(l["z0"]).to("cm").magnitude
-        ):
+        E0 = config.laser.E0
+        for layer in sorted(config.layers, key=lambda l: l.z0.magnitude):
             # create a config dict that we will pass to the layer
             # and fill in the keys needed by a layer
-            c = copy.copy(layer)
-            c.update(config["thermal"])
-            c.update(
+            # thank you pydantic...
+            layer_config = layer.model_dump()
+            layer_config.update(config.thermal.model_dump())
+            layer_config.update(config.laser.model_dump())
+            layer_config.update(config.simulation.model_dump())
+            # override irradiance
+            layer_config.update(
                 {
-                    "use_approximations": self.use_approximations,
-                    "use_multi_precision": self.use_multi_precision,
-                    "with_units": self.with_units,
                     "E0": str(E0),
                 }
             )
 
-            if "R" in config["laser"] and config["laser"]["R"] is not None:
-                c["R"] = config["laser"]["R"]
-                if (
-                    config["laser"].get("profile", "flattop").lower().replace(" ", "")
-                    == "flattop"
-                ):
-                    G = FlatTopBeamAbsorbingLayerGreensFunction(c)
-                elif (
-                    config["laser"].get("profile").lower().replace(" ", "")
-                    == "gaussian"
-                ):
-                    G = GaussianBeamAbsorbingLayerGreensFunction(c)
-            else:
-                G = LargeBeamAbsorbingLayerGreensFunction(c)
+            if config.laser.profile == "1d":
+                G = LargeBeamAbsorbingLayerGreensFunction(layer_config)
+            if config.laser.profile == "flattop":
+                G = FlatTopBeamAbsorbingLayerGreensFunction(layer_config)
+            if config.laser.profile == "gaussian":
+                G = GaussianBeamAbsorbingLayerGreensFunction(layer_config)
+
             self.layers.append(G)
 
             # Need to reduce the incident irradiance according to Beer's Law
-            mua = Q_(layer["mua"]).to("1/cm")
-            d = Q_(layer["d"]).to("cm")
+            mua = layer.mua
+            d = layer.d
+
             if not self.with_units:
                 mua = mua.magnitude
                 d = d.magnitude
@@ -447,15 +453,12 @@ class CWRetinaLaserExposure:
     """
 
     def __init__(self, config: dict) -> None:
-        self.G = MultiLayerGreensFunction(config)
+        if type(config) == dict:
+            config = CWRetinaLaserExposureConfig(**config)
+        self.G = MultiLayerGreensFunction(config.model_dump())
 
-        if "laser" not in config:
-            raise RuntimeError(
-                "No laser configuration given in config for retina exposure."
-            )
-
-        self.start = Q_(config.get("laser", {}).get("start", "0 s")).to("s")
-        self.duration = Q_(config.get("laser", {}).get("duration", "1 year")).to("s")
+        self.start = config.laser.start
+        self.duration = config.laser.duration
 
     def make_integrator_config(self):
         config = {
@@ -482,19 +485,13 @@ class CWRetinaLaserExposure:
 
 class PulsedRetinaLaserExposure(CWRetinaLaserExposure):
     def __init__(self, config: dict) -> None:
-        super().__init__(config)
-        if "laser" not in config:
-            raise RuntimeError(
-                "No laser configuration given in config for retina exposure."
-            )
-        if "pulse_duration" not in config["laser"]:
-            raise RuntimeError(
-                "'pulse_duration' missing: No pulse duration given in config for retina exposure."
-            )
+        if type(config) == dict:
+            config = PulsedRetinaLaserExposureConfig(**config)
+        super().__init__(config.model_dump())
 
         self.exposure_duration = self.duration
-        self.pulse_duration = Q_(config["laser"]["pulse_duration"]).to("s")
-        self.pulse_period = Q_(config["laser"].get("pulse_period", "1 year")).to("s")
+        self.pulse_duration = config.laser.pulse_duration
+        self.pulse_period = config.laser.pulse_period
 
     def make_integrator_config(self):
         config = {

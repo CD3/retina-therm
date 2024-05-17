@@ -3,7 +3,7 @@ Schemas for parsing and validating model configurations.
 """
 
 import math
-from typing import Annotated, Any, List, Literal, TypeVar
+from typing import Annotated, Any, List, Literal, TypeVar, Union
 
 import numpy
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, Field,
@@ -16,14 +16,7 @@ from .units import Q_
 QuantityWithUnit = lambda U: Annotated[
     str,
     AfterValidator(lambda x: Q_(x).to(U)),
-    PlainSerializer(lambda x: f"{x:~}", return_type=str),
-    WithJsonSchema({"type": "string"}, mode="serialization"),
-]
-
-Quantity = Annotated[
-    str,
-    AfterValidator(lambda x: Q_(x)),
-    PlainSerializer(lambda x: f"{x:~}", return_type=str),
+    PlainSerializer(lambda x: f"{x:~}" if x is not None else "null", return_type=str),
     WithJsonSchema({"type": "string"}, mode="serialization"),
 ]
 
@@ -38,8 +31,8 @@ class Laser(BaseModel):
     profile: Annotated[
         Literal["gaussian"] | Literal["flattop"] | Literal["1d"],
         BeforeValidator(lambda x: x.lower().replace(" ", "")),
-    ]
-    R: QuantityWithUnit("cm") = None
+    ] = "flattop"
+    R: Union[QuantityWithUnit("cm"), None] = Field(default=None)
     E0: QuantityWithUnit("W/cm^2")
 
     # allow user to specify diameter D instead of radius R
@@ -64,12 +57,23 @@ class Laser(BaseModel):
             raise ValueError(
                 "One of 'R' or 'D' must be given for '{self.profile}' profile."
             )
-        if self.R:
-            self.D_ = self.R * 2
-        else:
-            self.R = self.D_ / 2
+        if self.profile != "1d":
+            if self.R:
+                self.D_ = self.R * 2
+            else:
+                self.R = self.D_ / 2
 
         return self
+
+
+class CWLaser(Laser):
+    start: QuantityWithUnit("s") = Field(default="0 s", validate_default=True)
+    duration: QuantityWithUnit("s") = Field(default="1 year", validate_default=True)
+
+
+class PulsedLaser(CWLaser):
+    pulse_duration: QuantityWithUnit("s")
+    pulse_period: QuantityWithUnit("s") = Field(default="1 year", validate_default=True)
 
 
 class ThermalProperties(BaseModel):
@@ -105,81 +109,27 @@ class GaussianBeamAbsorbingLayerGreensFunctionConfig(
 
 
 class PrecisionConfig(BaseModel):
-    use_multi_precision: bool
-    use_approximations: bool
-    with_units: bool
+    use_multi_precision: bool = False
+    use_approximations: bool = True
+    with_units: bool = False
 
 
 class MultiLayerGreensFunctionConfig(BaseModel):
     laser: Laser
     thermal: ThermalProperties
     layers: List[Layer]
-    # simulation: PrecisionConfig
+
+    class Simulation(PrecisionConfig):
+        pass
+
+    simulation: Simulation
 
 
-def get_AbsorbingLayerGreensFunctionConfig_json(
-    config: MultiLayerGreensFunctionConfig, layer_index: int
-) -> dict:
-    assert layer_index < len(config.layers)
-
-    E0 = config.laser.E0
-    for i in range(len(config.layers)):
-        if i == layer_index:
-            break
-        E0 *= math.exp(-(config.layers[i].mua * config.layers[i].d).to(""))
-
-    return {
-        "rho": str(config.thermal.rho),
-        "c": str(config.thermal.c),
-        "k": str(config.thermal.k),
-        "d": str(config.layers[layer_index].d),
-        "z0": str(config.layers[layer_index].z0),
-        "mua": str(config.layers[layer_index].mua),
-        "E0": str(E0),
-        "R": str(config.laser.R),
-    }
+class CWRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
+    laser: CWLaser
 
 
-def make_LargeBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-    config: MultiLayerGreensFunctionConfig, layer_index: int
-) -> LargeBeamAbsorbingLayerGreensFunctionConfig:
-    return LargeBeamAbsorbingLayerGreensFunctionConfig(
-        **get_AbsorbingLayerGreensFunctionConfig_json(config, layer_index)
-    )
+class PulsedRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
+    laser: PulsedLaser
 
 
-def make_FlatTopBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-    config: MultiLayerGreensFunctionConfig, layer_index: int
-) -> FlatTopBeamAbsorbingLayerGreensFunctionConfig:
-    return FlatTopBeamAbsorbingLayerGreensFunctionConfig(
-        **get_AbsorbingLayerGreensFunctionConfig_json(config, layer_index)
-    )
-
-
-def make_GaussianBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-    config: MultiLayerGreensFunctionConfig, layer_index: int
-) -> GaussianBeamAbsorbingLayerGreensFunctionConfig:
-    return GaussianBeamAbsorbingLayerGreensFunctionConfig(
-        **get_AbsorbingLayerGreensFunctionConfig_json(config, layer_index)
-    )
-
-
-def make_AbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-    config: MultiLayerGreensFunctionConfig, layer_index: int
-) -> (
-    GaussianBeamAbsorbingLayerGreensFunctionConfig
-    | FlatTopBeamAbsorbingLayerGreensFunctionConfig
-    | LargeBeamAbsorbingLayerGreensFunctionConfig
-):
-    if config.laser.profile == "gaussian":
-        return make_GaussianBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-            config, layer_index
-        )
-    if config.laser.profile == "flattop":
-        return make_FlatTopBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-            config, layer_index
-        )
-    if config.laser.profile == "1d":
-        return make_LargeBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-            config, layer_index
-        )

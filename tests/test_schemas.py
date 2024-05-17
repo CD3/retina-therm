@@ -1,7 +1,9 @@
+import pydantic
 import pytest
 import yaml
 
 from retina_therm.schemas import *
+from retina_therm.units import *
 
 
 def test_layer_schema():
@@ -100,6 +102,7 @@ def test_MultiLayerGreensFunctionConfig():
 
     config = MultiLayerGreensFunctionConfig(
         **{
+            "simulation": {},
             "laser": {"profile": "Flat Top", "R": "10 um", "E0": "1 W/cm^2"},
             "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
             "layers": [
@@ -127,9 +130,96 @@ def test_LaserSchema():
         laser_config = Laser(**{"profile": "gaussian", "q": "1 cm"})
 
 
-def test_making_configs_from_other_configs():
-    config = MultiLayerGreensFunctionConfig(
+
+
+def test_converting_models():
+    config_text = """
+mua: 10 1/mm
+rho: 1 kg/m^3
+c: 1 cal / g / K
+k: 2 W/cm/K
+d: 10 um
+z0: 0 um
+E0: 1 mW/cm^2
+R: 3 mm
+"""
+    config = GaussianBeamAbsorbingLayerGreensFunctionConfig(
+        **yaml.safe_load(config_text)
+    )
+    config2 = FlatTopBeamAbsorbingLayerGreensFunctionConfig(**config.model_dump())
+    config3 = LargeBeamAbsorbingLayerGreensFunctionConfig(**config2.model_dump())
+
+    assert config.R == config2.R
+    with pytest.raises(AttributeError):
+        tmp = config3.R
+
+
+def test_unit_conversions():
+    config_text = """
+mua: 10 1/mm
+rho: 1 kg/m^3
+c: 1 cal / g / K
+k: 2 W/cm/K
+d: 10 um
+z0: 0 um
+E0: 1 mW/cm^2
+R: 3 mm
+"""
+    config = GaussianBeamAbsorbingLayerGreensFunctionConfig(
+        **yaml.safe_load(config_text)
+    )
+
+    assert config.mua.magnitude == pytest.approx(100)
+    assert config.mua.units == Q_("1 1/cm").units
+
+    assert config.rho.magnitude == pytest.approx(
+        Q_(1, "kg/m^3").to("g/cm/cm/cm").magnitude
+    )
+    assert config.rho.units == Q_("1 g/cm^3").units
+
+    assert config.c.magnitude == pytest.approx(Q_(1, "cal/g/K").to("J/g/K").magnitude)
+    assert config.c.units == Q_("1 J/g/K").units
+
+    assert config.k.magnitude == pytest.approx(2)
+    assert config.k.units == Q_("1 W/cm/K").units
+
+    assert config.d.magnitude == pytest.approx(10e-4)
+    assert config.d.units == Q_("1 cm").units
+
+    assert config.z0.magnitude == pytest.approx(0)
+    assert config.z0.units == Q_("1 cm").units
+
+    assert config.E0.magnitude == pytest.approx(0.001)
+    assert config.E0.units == Q_("1 W/cm/cm").units
+
+    assert config.R.magnitude == pytest.approx(0.3)
+    assert config.R.units == Q_("1 cm").units
+
+
+def test_beam_radius_required_if_not_1d():
+    with pytest.raises(pydantic.ValidationError):
+        config = Laser(**{"E0": 1})
+    with pytest.raises(pint.DimensionalityError):
+        config = Laser(**{"E0": "1"})
+
+    with pytest.raises(pydantic.ValidationError):
+        config = Laser(**{"E0": "1 W/cm/cm"})
+
+    config = Laser(**{"E0": "1 W/cm/cm", "R": "1 cm"})
+
+    assert config.profile == "flattop"
+    assert config.R.magnitude == pytest.approx(1)
+
+    config = Laser(**{"E0": "1 W/cm/cm", "profile": "1d"})
+
+    assert config.profile == "1d"
+    assert config.R == None
+
+
+def test_cw_retina_exposure_config():
+    config = CWRetinaLaserExposureConfig(
         **{
+            "simulation": {},
             "laser": {"profile": "Flat Top", "R": "10 um", "E0": "1 W/cm^2"},
             "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
             "layers": [
@@ -139,78 +229,39 @@ def test_making_configs_from_other_configs():
         }
     )
 
-    gf_config = make_LargeBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-        config, 0
+    assert config.laser.start.magnitude == pytest.approx(0)
+    assert config.laser.duration.magnitude == pytest.approx(Q_(1, "year").to("s"))
+
+
+def test_pulsed_retina_exposure_config():
+    config_dict = {
+        "simulation": {},
+        "laser": {"profile": "Flat Top", "R": "10 um", "E0": "1 W/cm^2"},
+        "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
+        "layers": [
+            {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
+            {"d": "100 um", "z0": "10 um", "mua": "50 1/cm"},
+        ],
+    }
+    with pytest.raises(pydantic.ValidationError):
+        config = PulsedRetinaLaserExposureConfig(**config_dict)
+
+    config_dict["laser"]["pulse_duration"] = "1 us"
+    config = PulsedRetinaLaserExposureConfig(**config_dict)
+    assert config.laser.start.magnitude == pytest.approx(0)
+    assert config.laser.duration.magnitude == pytest.approx(
+        Q_(1, "year").to("s").magnitude
     )
-    assert isinstance(gf_config,LargeBeamAbsorbingLayerGreensFunctionConfig)
-    assert gf_config.E0.magnitude == pytest.approx(1)
-    assert gf_config.rho.magnitude == pytest.approx(1)
-    assert gf_config.c.magnitude == pytest.approx(4.184)
-    assert gf_config.k.magnitude == pytest.approx(0.00628)
-    assert gf_config.d.magnitude == pytest.approx(10e-4)
-    assert gf_config.mua.magnitude == pytest.approx(300)
-
-    gf_config = make_LargeBeamAbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-        config, 1
+    assert config.laser.pulse_duration.magnitude == pytest.approx(1e-6)
+    assert config.laser.pulse_period.magnitude == pytest.approx(
+        Q_(1, "year").to("s").magnitude
     )
-    assert isinstance(gf_config,LargeBeamAbsorbingLayerGreensFunctionConfig)
-    assert gf_config.E0.magnitude == pytest.approx(0.740818)
-    assert gf_config.rho.magnitude == pytest.approx(1)
-    assert gf_config.c.magnitude == pytest.approx(4.184)
-    assert gf_config.k.magnitude == pytest.approx(0.00628)
-    assert gf_config.d.magnitude == pytest.approx(100e-4)
-    assert gf_config.mua.magnitude == pytest.approx(50)
 
-
-
-    gf_config = make_AbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-        config, 0
+    config_dict["laser"]["pulse_period"] = "10 us"
+    config = PulsedRetinaLaserExposureConfig(**config_dict)
+    assert config.laser.start.magnitude == pytest.approx(0)
+    assert config.laser.duration.magnitude == pytest.approx(
+        Q_(1, "year").to("s").magnitude
     )
-    assert isinstance(gf_config,FlatTopBeamAbsorbingLayerGreensFunctionConfig)
-    assert gf_config.E0.magnitude == pytest.approx(1)
-    assert gf_config.rho.magnitude == pytest.approx(1)
-    assert gf_config.c.magnitude == pytest.approx(4.184)
-    assert gf_config.k.magnitude == pytest.approx(0.00628)
-    assert gf_config.d.magnitude == pytest.approx(10e-4)
-    assert gf_config.mua.magnitude == pytest.approx(300)
-    assert gf_config.R.magnitude == pytest.approx(10e-4)
-
-    gf_config = make_AbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig(
-        config, 1
-    )
-    assert isinstance(gf_config,FlatTopBeamAbsorbingLayerGreensFunctionConfig)
-    assert gf_config.E0.magnitude == pytest.approx(0.740818)
-    assert gf_config.rho.magnitude == pytest.approx(1)
-    assert gf_config.c.magnitude == pytest.approx(4.184)
-    assert gf_config.k.magnitude == pytest.approx(0.00628)
-    assert gf_config.d.magnitude == pytest.approx(100e-4)
-    assert gf_config.mua.magnitude == pytest.approx(50)
-    assert gf_config.R.magnitude == pytest.approx(10e-4)
-
-
-
-    config = MultiLayerGreensFunctionConfig(
-        **{
-            "laser": {"profile": "1d", "R": "10 um", "E0": "1 W/cm^2"},
-            "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
-            "layers": [
-                {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
-                {"d": "100 um", "z0": "10 um", "mua": "50 1/cm"},
-            ],
-        }
-    )
-    gf_config = make_AbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig( config, 0)
-    assert type(gf_config) == LargeBeamAbsorbingLayerGreensFunctionConfig
-
-    config = MultiLayerGreensFunctionConfig(
-        **{
-            "laser": {"profile": "Gaussian", "R": "10 um", "E0": "1 W/cm^2"},
-            "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
-            "layers": [
-                {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
-                {"d": "100 um", "z0": "10 um", "mua": "50 1/cm"},
-            ],
-        }
-    )
-    gf_config = make_AbsorbingLayerGreensFunctionConfig_from_MultiLayerGreensFunctionConfig( config, 0)
-    assert type(gf_config) == GaussianBeamAbsorbingLayerGreensFunctionConfig
+    assert config.laser.pulse_duration.magnitude == pytest.approx(1e-6)
+    assert config.laser.pulse_period.magnitude == pytest.approx(10e-6)
