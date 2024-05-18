@@ -1,8 +1,11 @@
 import copy
 import hashlib
 import itertools
+import pathlib
+import typing
 
 import numpy
+import yaml
 from fspathtree import fspathtree
 
 from . import units, utils
@@ -36,6 +39,40 @@ def batch_expand(config: fspathtree):
     return configs
 
 
+def load_configs(config_files: typing.List[pathlib.Path], include_base=False):
+    if type(config_files) not in [list]:
+        config_files = [config_files]
+    configs = list()
+
+    base_config = yaml.safe_load(pathlib.Path(config_files[0]).read_text())
+    if include_base:
+        config = copy.deepcopy(base_config)
+        config = fspathtree(config)
+        configs.append(config)
+    for file in config_files[1:]:
+        config = copy.deepcopy(base_config)
+        c = yaml.safe_load(pathlib.Path(file).read_text())
+        config.update(c)
+        config = fspathtree(config)
+        configs.append(config)
+
+    # expand batch parameters
+    configs = list(
+        itertools.chain(*map(lambda c: batch_expand(c), configs)),
+    )
+
+    # Do we want to allow overrides?
+    # If so, where should they be overriden? Here? Or before batch expansion?
+    # for item in overrides:
+    #     k, v = [tok.strip() for tok in item.split("=", maxsplit=1)]
+    #     if k not in config:
+    #         sys.stderr.write(
+    #             f"Warning: {k} was not in the config file, so it is being set, not overriden."
+    #         )
+    #     config[k] = v
+    return configs
+
+
 def compute_missing_parameters(config):
     """
     Compute values for missing parameters in the config. For example, if laser irradiance
@@ -48,9 +85,11 @@ def compute_missing_parameters(config):
     if "laser/E0" not in config:
         if "laser/Q" in config:
             if "laser/pulse_duration" in config or "laser/duration" in config:
-                t = units.Q_(config.get("laser/pulse_duration", config["laser/duration"]) )
+                t = units.Q_(
+                    config.get("laser/pulse_duration", config["laser/duration"])
+                )
                 Q = units.Q_(config["laser/Q"])
-                Phi = Q/t
+                Phi = Q / t
                 config["laser/Phi"] = str(Phi)
         if "laser/Phi" in config and "laser/R" in config:
             Phi = units.Q_(config["laser/Phi"])
@@ -59,11 +98,12 @@ def compute_missing_parameters(config):
             config["laser/E0"] = str(E0)
         if "laser/H" in config:
             if "laser/pulse_duration" in config or "laser/duration" in config:
-                t = units.Q_(config.get("laser/pulse_duration", config["laser/duration"]) )
+                t = units.Q_(
+                    config.get("laser/pulse_duration", config["laser/duration"])
+                )
                 H = units.Q_(config["laser/H"])
-                E0 = H/t
+                E0 = H / t
                 config["laser/E0"] = str(E0)
-
 
     missing_params = [param for param in ["laser/R", "laser/E0"] if param not in config]
     if len(missing_params) > 0:

@@ -2,7 +2,7 @@ import multiprocessing
 import pprint
 import sys
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, List
 
 import numpy
 import rich
@@ -506,6 +506,7 @@ def multiple_pulse_job(config):
 
     output_filename = config.get("output_file", "{input_file_stem}-MP.txt")
     ctx = {
+        "config_id": config_utils.get_id(config),
         "input_filename_stem": input_file.stem,
         "tau": config.get("/tau", "None").replace(" ", "_"),
         "t0": config.get("/t0", "None").replace(" ", "_"),
@@ -516,20 +517,24 @@ def multiple_pulse_job(config):
         "T": config.get("/T", "None").replace(" ", "_"),
     }
     output_filename = output_filename.format(**ctx)
+    output_path = Path(output_filename)
+    if output_path.parent != Path():
+        output_path.parent.mkdir(exist_ok=True, parents=True)
+
     numpy.savetxt(output_filename, data)
 
 
 @app.command()
 def multiple_pulse(
-    config_file: Path,
-    override: Annotated[
-        list[str],
-        typer.Option(
-            help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
-        ),
-    ] = [],
+    config_files: List[Path],
+    # override: Annotated[
+    #     list[str],
+    #     typer.Option(
+    #         help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
+    #     ),
+    # ] = [],
 ):
-    configs = load_multi_pulse_config(config_file, override)
+    configs = config_utils.load_configs(config_files)
     jobs = []
     for config in configs:
         jobs.append(multiprocessing.Process(target=multiple_pulse_job, args=(config,)))

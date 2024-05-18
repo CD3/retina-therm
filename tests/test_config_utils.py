@@ -1,3 +1,6 @@
+import os
+import pathlib
+
 import numpy
 import pytest
 
@@ -34,3 +37,75 @@ def test_batch_expansion_single_vars():
     assert configs[3]["/two"] == 3
     assert configs[3]["/three/vals"] == 4
 
+
+def test_loading_single_config(tmp_path):
+    orig_path = pathlib.Path().absolute()
+    os.chdir(tmp_path)
+    config_text = """
+one: 1
+two: 2
+    """
+
+    pathlib.Path("config.yml").write_text(config_text)
+
+    configs = config_utils.load_configs("config.yml",include_base=True)
+    assert len(configs) == 1
+
+    assert configs[0]["/one"] == 1
+    assert configs[0]["/two"] == 2
+    os.chdir(orig_path)
+
+
+def test_loading_two_config(tmp_path):
+    orig_path = pathlib.Path().absolute()
+    os.chdir(tmp_path)
+    config_text = """
+one: 1
+two: 2
+    """
+    pathlib.Path("config.yml").write_text(config_text)
+
+    config_text = """
+two: 4
+three: 3
+    """
+    pathlib.Path("config2.yml").write_text(config_text)
+
+    configs = config_utils.load_configs(["config.yml", "config2.yml"],include_base=True)
+
+    assert len(configs) == 2
+
+    assert configs[0]["/one"] == 1
+    assert configs[0]["/two"] == 2
+    assert "/three" not in configs[0]
+
+    assert configs[1]["/one"] == 1
+    assert configs[1]["/two"] == 4
+    assert configs[1]["/three"] == 3
+
+    os.chdir(orig_path)
+
+
+def test_loading_config_with_batch_parameter(tmp_path):
+    orig_path = pathlib.Path().absolute()
+    os.chdir(tmp_path)
+    config_text = """
+one: 1
+two: 
+    '@batch':
+      - 2
+      - 4
+    """
+    pathlib.Path("config.yml").write_text(config_text)
+
+    configs = config_utils.load_configs("config.yml",include_base=True)
+
+    assert len(configs) == 2
+
+    assert configs[0]["/one"] == 1
+    assert configs[0]["/two"] == 2
+
+    assert configs[1]["/one"] == 1
+    assert configs[1]["/two"] == 4
+
+    os.chdir(orig_path)
