@@ -131,5 +131,3 @@ class CWRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
 
 class PulsedRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
     laser: PulsedLaser
-
-

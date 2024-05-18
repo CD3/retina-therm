@@ -2,6 +2,31 @@ import copy
 from typing import Optional
 
 import numpy
+import scipy
+
+
+def regularize_grid(t):
+    dt = t[1] - t[0]
+    tmax = t[-1]
+    tmin = t[0]
+    N = int( (tmax - tmin) / dt ) + 1
+    tp = numpy.zeros([N])
+    for i in range(N):
+        tp[i] = tmin + i*dt
+
+    return tp
+
+def interpolate_temperature_history(t, T, tp):
+    """Interpolate a temperature history to a differt set of times."""
+    Tp = numpy.zeros([len(tp)])
+
+    interp = scipy.interpolate.PchipInterpolator(t, T)
+    for i in range(len(tp)):
+        if tp[i] < t[0] or tp[i] > t[-1]:
+            continue
+        Tp[i] = interp(tp[i])
+
+    return Tp
 
 
 class MultiPulseBuilder:

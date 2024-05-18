@@ -257,7 +257,7 @@ class MultiLayerGreensFunction:
             self.exp = mp.exp
         elif self.with_units:
             self.erf = scipy.special.erf
-            self.sqrt =numpy.sqrt
+            self.sqrt = numpy.sqrt
             self.exp = numpy.exp
         else:
             # the math module implementations seem to be faster based on test_benchmarks...
