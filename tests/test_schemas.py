@@ -130,8 +130,6 @@ def test_LaserSchema():
         laser_config = Laser(**{"profile": "gaussian", "q": "1 cm"})
 
 
-
-
 def test_converting_models():
     config_text = """
 mua: 10 1/mm

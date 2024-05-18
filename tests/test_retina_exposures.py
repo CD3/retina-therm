@@ -87,11 +87,7 @@ def test_cw_retina_exposure():
 def test_pulsed_retina_exposure():
     exp = greens_functions.PulsedRetinaLaserExposure(
         {
-            "laser": {
-                "E0": "1 W/cm^2",
-                "R": "1 cm",
-                "pulse_duration":"1 year"
-            },
+            "laser": {"E0": "1 W/cm^2", "R": "1 cm", "pulse_duration": "1 year"},
             "thermal": {
                 "k": "1 W/cm/K",
                 "rho": "1 g/cm^3",
