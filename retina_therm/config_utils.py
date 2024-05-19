@@ -39,22 +39,47 @@ def batch_expand(config: fspathtree):
     return configs
 
 
-def load_configs(config_files: typing.List[pathlib.Path], include_base=False):
+def load_configs(config_files: typing.List[pathlib.Path]):
+    """
+    Load a set of configuration files (YAML files) and return a set of configuration objects (fspathtree instances).
+    A configuration file may contain multiple document, in which case the file is assumed to
+    represent a set of configurations where the first document contains common parameters to all
+    configurations, and the other documents contain overrides.
+
+    After all files have been loaded, @batch parameters are expanded, which can result in more configuration
+    objects being generated.
+    """
     if type(config_files) not in [list]:
         config_files = [config_files]
     configs = list()
 
-    base_config = yaml.safe_load(pathlib.Path(config_files[0]).read_text())
-    if include_base:
-        config = copy.deepcopy(base_config)
-        config = fspathtree(config)
-        configs.append(config)
-    for file in config_files[1:]:
-        config = copy.deepcopy(base_config)
-        c = yaml.safe_load(pathlib.Path(file).read_text())
-        config.update(c)
-        config = fspathtree(config)
-        configs.append(config)
+    for file in config_files:
+        full_text = pathlib.Path(file).read_text()
+        doc_texts = full_text.split("\n---\n")
+        if any(map(lambda t: t == "", map(lambda t: t.strip(), doc_texts))):
+            raise RuntimeError(f"Configuration '{file}' contained an empty document.")
+
+        if len(doc_texts) < 1:
+            raise RuntimeError(f"No yaml document found in '{file}'.")
+
+        if len(doc_texts) == 1:
+            # if this is the only document in the config file,
+            # then we just want to add it to the set of configs.
+            config = yaml.safe_load(doc_texts[0])
+            config = fspathtree(config)
+            configs.append(config)
+        else:
+            # if there are more then on document, then we want
+            # to treat the first as a "base" configuration and
+            # generate a configuration sequence for eac of the
+            # following documents
+            base_config = yaml.safe_load(doc_texts[0])
+            for text in doc_texts[1:]:
+                config = copy.deepcopy(base_config)
+                c = yaml.safe_load(text)
+                config.update(c)
+                config = fspathtree(config)
+                configs.append(config)
 
     # expand batch parameters
     configs = list(
