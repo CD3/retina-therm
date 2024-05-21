@@ -1,10 +1,12 @@
 import copy
 import hashlib
 import itertools
+import json
 import pathlib
 import typing
 
 import numpy
+import pydantic.v1.utils
 import yaml
 from fspathtree import fspathtree
 
@@ -77,7 +79,10 @@ def load_configs(config_files: typing.List[pathlib.Path]):
             for text in doc_texts[1:]:
                 config = copy.deepcopy(base_config)
                 c = yaml.safe_load(text)
-                config.update(c)
+                # we can't use python's builtin update here
+                # because it will replace entire branch of config tree
+                config = pydantic.v1.utils.deep_update(config, c)
+                # config.update(c)
                 config = fspathtree(config)
                 configs.append(config)
 
@@ -138,5 +143,6 @@ def compute_missing_parameters(config):
 
 
 def get_id(config: fspathtree):
-    text = str(config).replace(" ", "")
+    """Return a unique id for the given configuration object."""
+    text = json.dumps(config.tree, sort_keys=True).replace(" ", "")
     return hashlib.md5(text.encode("utf-8")).hexdigest()
