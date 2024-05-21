@@ -391,13 +391,13 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
         ts: list[float | mp.mpf],
         config: dict,
     ):
-        tmin = min(ts)
-        tmax = max(ts)
-
         ton = Q_(config.get("ton", "0 s")).to("s").magnitude
         tau = Q_(config.get("tau", "1 year")).to("s").magnitude
         t0 = Q_(config.get("t0", "1 year")).to("s").magnitude
         T = Q_(config.get("T", "1 year")).to("s").magnitude
+
+        tmin = ton
+        tmax = max(ts)
 
         max_subinterval_range = self.max_subinterval_range.to("s").magnitude
         num_subintervals = 1
