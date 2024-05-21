@@ -108,31 +108,6 @@ def load_config(config_file: Path, overrides: list[str]):
     return configs
 
 
-def load_multi_pulse_config(config_file: Path, overrides: list[str]):
-    if not config_file.exists():
-        raise typer.Exit(f"File '{config_file}' not found.")
-    with open(config_file, "r") as f:
-        config = yaml.safe_load(f)
-
-    config = fspathtree(config)
-
-    for item in overrides:
-        k, v = [tok.strip() for tok in item.split("=", maxsplit=1)]
-        if k not in config:
-            sys.stderr.write(
-                f"Warning: {k} was not in the config file, so it is being set, not overriden."
-            )
-        config[k] = v
-
-    configs = config_utils.batch_expand(config)
-    for c in configs:
-        for k in c.get_all_leaf_node_paths():
-            if type(c[k]) is str and c[k].lower() in ["none", "null"]:
-                c[k] = None
-
-    return configs
-
-
 def relaxation_time_job(config: fspathtree) -> None:
     stdout, stderr, datout = get_output_streams(config)
 
@@ -313,9 +288,11 @@ def temperature_rise_job(config):
     if config.get("simulation/time/ts", None) is None:
         dt = config.get("simulation/time/dt", "1 us")
         dt = units.Q_(dt).to("s").magnitude
+        tmin = config.get("simulation/time/min", "0 second")
+        tmin = units.Q_(tmin).to("s").magnitude
         tmax = config.get("simulation/time/max", "10 second")
         tmax = units.Q_(tmax).to("s").magnitude
-        t = numpy.arange(0, tmax, dt)
+        t = numpy.arange(tmin, tmax, dt)
     else:
         t = numpy.array(
             [units.Q_(time).to("s").magnitude for time in config["simulation/time/ts"]]
@@ -332,17 +309,17 @@ def temperature_rise_job(config):
 
 @app.command()
 def temperature_rise(
-    config_file: Path,
+    config_files: Path,
     dps: Annotated[
         int,
         typer.Option(help="The precision to use for calculations when mpmath is used."),
     ] = 100,
-    override: Annotated[
-        list[str],
-        typer.Option(
-            help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
-        ),
-    ] = [],
+    # override: Annotated[
+    #     list[str],
+    #     typer.Option(
+    #         help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
+    #     ),
+    # ] = [],
     method: Annotated[
         str, typer.Option(help="Integration method to use.")
     ] = "undefined",
@@ -364,7 +341,7 @@ def temperature_rise(
 
     mp.dps = dps
 
-    configs = load_config(config_file, override)
+    configs = config_utils.load_configs(config_files)
     jobs = []
     for config in configs:
         if method != "undefined":
@@ -443,13 +420,23 @@ def multipulse_microcavitation_threshold(
 
 
 def multiple_pulse_job(config):
+    config_id = config_utils.get_id(config)
     print("Loading multiple-pulse configuration file")
     input_file = Path(config["input_file"])
     data = numpy.loadtxt(config["input_file"])
     t = data[:, 0]
     T = data[:, 1]
 
+    if not multi_pulse_builder.is_uniform_spaced(t):
+        tp = multi_pulse_builder.regularize_grid(t)
+        Tp = multi_pulse_builder.interpolate_temperature_history(t, T, tp)
+        t = tp
+        T = Tp
+        data = numpy.zeros([len(tp), 2])
+        data[:, 0] = t
+
     builder = multi_pulse_builder.MultiPulseBuilder()
+
     builder.set_temperature_history(t, T)
 
     # if a pulse duration is given, then it means we have a CW exposure
@@ -506,7 +493,7 @@ def multiple_pulse_job(config):
 
     output_filename = config.get("output_file", "{input_file_stem}-MP.txt")
     ctx = {
-        "config_id": config_utils.get_id(config),
+        "config_id": config_id,
         "input_filename_stem": input_file.stem,
         "tau": config.get("/tau", "None").replace(" ", "_"),
         "t0": config.get("/t0", "None").replace(" ", "_"),
@@ -518,8 +505,15 @@ def multiple_pulse_job(config):
     }
     output_filename = output_filename.format(**ctx)
     output_path = Path(output_filename)
+    output_config = None
     if output_path.parent != Path():
         output_path.parent.mkdir(exist_ok=True, parents=True)
+        output_config = output_path.parent / "config.yml"
+    else:
+        config_output = Path("CONFIG-" + str(output_path))
+
+    if output_config:
+        output_config.write_text(yaml.dump(config.tree))
 
     numpy.savetxt(output_filename, data)
 
@@ -535,6 +529,12 @@ def multiple_pulse(
     # ] = [],
 ):
     configs = config_utils.load_configs(config_files)
+    # configs = list(
+    #     map(
+    #         lambda c: MultiplePulseCmdConfig(**c.tree),
+    #         config_utils.load_configs(config_files),
+    #     )
+    # )
     jobs = []
     for config in configs:
         jobs.append(multiprocessing.Process(target=multiple_pulse_job, args=(config,)))
