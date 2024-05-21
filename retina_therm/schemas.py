@@ -3,6 +3,7 @@ Schemas for parsing and validating model configurations.
 """
 
 import math
+import pathlib
 from typing import Annotated, Any, List, Literal, TypeVar, Union
 
 import numpy
@@ -131,3 +132,17 @@ class CWRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
 
 class PulsedRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
     laser: PulsedLaser
+
+
+# class MultiplePulseContribution:
+#     arrival_time: QuantityWithUnit("s")
+#     scale: QuantityWithUnit("dimensionless")
+
+
+# class MultiplePulseCmdConfig(BaseModel):
+#     input_file: pathlib.Path
+#     output_file: pathlib.Path
+#     tau: QuantityWithUnit("s")
+#     T: QuantityWithUnit("s")
+#     t0: QuantityWithUnit("s")
+#     contributions: List[MultiplePulseContribution] = []
