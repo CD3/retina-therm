@@ -5,16 +5,25 @@ import numpy
 import scipy
 
 
+def is_uniform_spaced(x: numpy.array, tol: float = 1e-10):
+    dx = x[1] - x[0]
+    for i in range(len(x) - 1):
+        if (x[i + 1] - x[i]) - dx > tol:
+            return False
+    return True
+
+
 def regularize_grid(t):
     dt = t[1] - t[0]
     tmax = t[-1]
     tmin = t[0]
-    N = int( (tmax - tmin) / dt ) + 1
+    N = int((tmax - tmin) / dt) + 1
     tp = numpy.zeros([N])
     for i in range(N):
-        tp[i] = tmin + i*dt
+        tp[i] = tmin + i * dt
 
     return tp
+
 
 def interpolate_temperature_history(t, T, tp):
     """Interpolate a temperature history to a differt set of times."""
@@ -47,7 +56,7 @@ class MultiPulseBuilder:
         assert len(t) == len(T)
         self.T0 = T[0]
 
-        if not self.is_uniform_spaced(t):
+        if not is_uniform_spaced(t):
             raise RuntimeError(
                 "Currently only support uniform spacing of the temperature history."
             )
@@ -69,17 +78,10 @@ class MultiPulseBuilder:
         self.arrival_times = []
         self.scales = []
 
-    def is_uniform_spaced(self, x: numpy.array, tol: float = 1e-10):
-        dx = x[1] - x[0]
-        for i in range(len(x) - 1):
-            if (x[i + 1] - x[i]) - dx > tol:
-                return False
-        return True
-
     def build(self) -> numpy.array:
         t = self.t
 
-        if not self.is_uniform_spaced(t):
+        if not is_uniform_spaced(t):
             raise RuntimeError(
                 "Currently only support uniform spacing of the temperature history."
             )
