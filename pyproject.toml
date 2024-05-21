@@ -19,6 +19,7 @@ fspathtree = "^0.8"
 p-tqdm = "^1.4.0"
 pydantic = "^2.5.3"
 tissue-properties = "^0.1.0"
+tinydb = "^4.8.0"
 
 
 [tool.poetry.group.dev.dependencies]
