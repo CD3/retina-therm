@@ -54,8 +54,8 @@ def test_interpolating():
     assert Tp[1] == pytest.approx(0.01 * 2)
     assert Tp[2] == pytest.approx(0.02 * 2)
 
-def test_grid_regulizer():
 
+def test_grid_regulizer():
     t = numpy.zeros([5])
     t[0] = 0
     t[1] = 0.1
@@ -74,3 +74,16 @@ def test_grid_regulizer():
     assert tp[-1] == pytest.approx(1)
     assert tp[-2] == pytest.approx(0.9)
 
+
+def test_regularizing_temperature_history():
+    t = numpy.array([0, 0.1, 0.3, 1, 2])
+    T = 2 * t
+
+    tp = multi_pulse_builder.regularize_grid(t)
+    Tp = multi_pulse_builder.interpolate_temperature_history(t, T, tp)
+
+    assert len(Tp) == 21
+
+    assert Tp[0] == pytest.approx(0)
+    assert Tp[20] == pytest.approx(4)
+    assert Tp[10] == pytest.approx(2)
