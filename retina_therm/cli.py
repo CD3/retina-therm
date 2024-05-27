@@ -56,26 +56,35 @@ def get_rendered(key: str, config: fspathtree, replace_spaces_char: str | None =
 def get_output_streams(config: fspathtree):
     stdout = sys.stdout
     stderr = sys.stderr
-    datout = sys.stdout
     config["cmd"] = invoked_subcommand
-    config["config_file/stem"] = config_filename_stem
-    if config.get("simulation/datout", None) is not None:
-        datout = open(
-            get_rendered("simulation/datout", config, replace_spaces_char="_"),
-            "w",
+    if config.get("/simulation/stdout", None) is not None:
+        stdout_path = Path(
+            get_rendered("/simulation/stdout", config, replace_spaces_char="_")
         )
-    if config.get("simulation/stdout", None) is not None:
-        stdout = open(
-            get_rendered("simulation/stdout", config, replace_spaces_char="_"),
-            "w",
+        if stdout_path.parent != Path():
+            stdout_path.parent.mkdir(parents=True, exist_ok=True)
+        stdout = open(stdout_path, "w")
+    if config.get("/simulation/stderr", None) is not None:
+        stderr_path = Path(
+            get_rendered("/simulation/stderr", config, replace_spaces_char="_")
         )
-    if config.get("simulation/stderr", None) is not None:
-        stderr = open(
-            get_rendered("simulation/stderr", config, replace_spaces_char="_"),
-            "w",
-        )
+        if stderr_path.parent != Path():
+            stderr_path.parent.mkdir(parents=True, exist_ok=True)
+        stderr = open(stderr_path, "w")
 
-    return stdout, stderr, datout
+    return stdout, stderr
+
+
+def render_and_setup_output_file(output_filename, ctx):
+    """Generate an output filename using the given context and create any parent directories if needed."""
+    # render filename using context
+    output_filename = output_filename.format(**ctx).replace(" ", "_")
+    output_path = Path(output_filename)
+    # if output file is in a subdirectory, create the directory
+    if output_path.parent != Path():
+        output_path.parent.mkdir(exist_ok=True, parents=True)
+
+    return output_path
 
 
 def load_config(config_file: Path, overrides: list[str]):
@@ -264,9 +273,10 @@ def compute_tissue_properties(config):
 
 
 def temperature_rise_job(config):
+    config_id = config_utils.get_id(config)
     config = compute_tissue_properties(config)
-    stdout, stderr, datout = get_output_streams(config)
-    stdout.write(str(config.tree) + "\n")
+    stdout, stderr = get_output_streams(config)
+
     if "laser/profile" not in config:
         config["laser/profile"] = "flattop"
     if "simulation/with_units" not in config:
@@ -299,32 +309,62 @@ def temperature_rise_job(config):
         )
 
     method = config.get("simulation/temperature_rise/method", "quad")
+    if method not in temperature_rise_integration_methods + ["undefined"]:
+        rich.print(f"[red]Unrecognized integration method '{method}'[/red]")
+        rich.print(
+            f"[red]Please use one of {', '.join(temperature_rise_integration_methods)}[/red]"
+        )
+        return
 
-    print("Computing temperature rise")
+    print("Computing temperature rise...")
     T = G.temperature_rise(z, r, t, method=method)
-    print("Writing temperature rise")
-    for i in range(len(T)):
-        datout.write(f"{t[i]} {T[i]}\n")
+    print("done.")
+    print("Writing temperature rise...")
+    ctx = {
+        "config_id": config_id,
+        "this_file_stem": Path(config["this_file"]).stem,
+        "c": config,
+    }
+    output_filename = config.get("simulation/output_file", "{this_file_stem}-Tvst.txt")
+    output_filename = output_filename.format(**ctx).replace(" ", "_")
+
+    output_config_filename = config.get("simulation/output_config_file", None)
+    if output_config_filename:
+        output_config_filename = output_config_filename.format(**ctx).replace(" ", "_")
+
+    output_path = Path(output_filename)
+    if output_path.parent != Path():
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    if output_config_filename is not None:
+        output_config_path = Path(output_config_filename)
+        if output_config_path.parent != Path():
+            output_config_path.parent.mkdir(parents=True, exist_ok=True)
+        Path(output_config_filename).write_text(yaml.dump(config))
+    numpy.savetxt(output_path, numpy.c_[t, T])
+    print("done.")
 
 
 @app.command()
 def temperature_rise(
     config_files: Path,
+    ids: Annotated[
+        List[str],
+        typer.Option(
+            help="Only run simulation for configurations with ID in the given list."
+        ),
+    ] = None,
     dps: Annotated[
         int,
         typer.Option(help="The precision to use for calculations when mpmath is used."),
     ] = 100,
-    # override: Annotated[
-    #     list[str],
-    #     typer.Option(
-    #         help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
-    #     ),
-    # ] = [],
-    method: Annotated[
-        str, typer.Option(help="Integration method to use.")
-    ] = "undefined",
     list_methods: Annotated[
         bool, typer.Option(help="List the avaiable integration methods.")
+    ] = False,
+    print_ids: Annotated[
+        bool,
+        typer.Option(
+            help="Load configuration file(s) and print a list of the config IDs."
+        ),
     ] = False,
 ):
     if list_methods:
@@ -332,27 +372,28 @@ def temperature_rise(
         for m in temperature_rise_integration_methods:
             print("  ", m)
         raise typer.Exit(0)
-    if method not in temperature_rise_integration_methods + ["undefined"]:
-        rich.print(f"[red]Unrecognized integration method '{method}'[/red]")
-        rich.print(
-            f"[red]Please use one of {', '.join(temperature_rise_integration_methods)}[/red]"
-        )
-        raise typer.Exit(1)
 
     mp.dps = dps
 
     configs = config_utils.load_configs(config_files)
-    jobs = []
-    for config in configs:
-        if method != "undefined":
-            config["simulation/temperature_rise/method"] = method
-        jobs.append(
-            multiprocessing.Process(target=temperature_rise_job, args=(config,))
-        )
-    for job in jobs:
-        job.start()
-    for job in jobs:
-        job.join()
+    config_ids = list(map(config_utils.get_id, configs))
+    if print_ids:
+        for _id in config_ids:
+            print(_id)
+        raise typer.Exit(0)
+
+    if len(ids) == 0:
+        ids = config_ids
+
+    configs_to_run = list(filter(lambda c: config_utils.get_id(c) in ids, configs))
+    if len(configs_to_run) == 0:
+        rich.print("[orange]No configurations matched list of IDs to run[/orange]")
+
+    with multiprocessing.Pool() as pool:
+        for r in pool.imap_unordered(temperature_rise_job, configs_to_run):
+            pass
+
+    raise typer.Exit(0)
 
 
 @app.command()
@@ -421,7 +462,7 @@ def multipulse_microcavitation_threshold(
 
 def multiple_pulse_job(config):
     config_id = config_utils.get_id(config)
-    print("Loading multiple-pulse configuration file")
+    print("Loading base temperature history for building multiple-pulse history.")
     input_file = Path(config["input_file"])
     data = numpy.loadtxt(config["input_file"])
     t = data[:, 0]
@@ -491,7 +532,6 @@ def multiple_pulse_job(config):
 
     data[:, 1] = Tmp
 
-    output_filename = config.get("output_file", "{input_file_stem}-MP.txt")
     ctx = {
         "config_id": config_id,
         "input_filename_stem": input_file.stem,
@@ -503,6 +543,7 @@ def multiple_pulse_job(config):
         "n": config.get("/N", "None"),
         "T": config.get("/T", "None").replace(" ", "_"),
     }
+    output_filename = config.get("output_file", "{input_file_stem}-MP.txt")
     output_filename = output_filename.format(**ctx)
     output_path = Path(output_filename)
     output_config = None
@@ -521,24 +562,82 @@ def multiple_pulse_job(config):
 @app.command()
 def multiple_pulse(
     config_files: List[Path],
-    # override: Annotated[
-    #     list[str],
-    #     typer.Option(
-    #         help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
-    #     ),
-    # ] = [],
+    ids: Annotated[
+        List[str],
+        typer.Option(
+            help="Only run simulation for configurations with ID in the given list."
+        ),
+    ] = None,
+    print_ids: Annotated[
+        bool,
+        typer.Option(
+            help="Load configuration file(s) and print a list of the config IDs."
+        ),
+    ] = False,
 ):
     configs = config_utils.load_configs(config_files)
-    # configs = list(
-    #     map(
-    #         lambda c: MultiplePulseCmdConfig(**c.tree),
-    #         config_utils.load_configs(config_files),
-    #     )
-    # )
-    jobs = []
-    for config in configs:
-        jobs.append(multiprocessing.Process(target=multiple_pulse_job, args=(config,)))
-    for job in jobs:
-        job.start()
-    for job in jobs:
-        job.join()
+    config_ids = list(map(config_utils.get_id, configs))
+    if print_ids:
+        for _id in config_ids:
+            print(_id)
+        raise typer.Exit(0)
+
+    if len(ids) == 0:
+        ids = config_ids
+
+    configs_to_run = list(filter(lambda c: config_utils.get_id(c) in ids, configs))
+    with multiprocessing.Pool() as pool:
+        for r in pool.imap_unordered(multiple_pulse_job, configs_to_run):
+            pass
+
+
+def truncate_temperature_history_file_job(config):
+    file = config["file"]
+    threshold = config["threshold"]
+
+    print(f"Truncating temperature_history in {file}.")
+    data = numpy.loadtxt(file)
+    threshold = units.Q_(threshold)
+    if threshold.check(""):
+        Tmax = max(data[:, 1])
+        Tthreshold = threshold * Tmax
+    elif threshold.check("K"):
+        Tthreshold = threshold
+
+    if data[-1, 1] > Tthreshold:
+        print(f"  {file} already trucated...skipping.")
+        return
+
+    idx = numpy.argmax(numpy.flip(data[:, 1]) > Tthreshold)
+    print(f"  Saving trucated history back to {file}.")
+    numpy.savetxt(file, data[:-idx, :])
+
+
+@app.command()
+def truncate_temperature_history_file(
+    temperature_history_file: List[Path],
+    threshold: Annotated[
+        str,
+        typer.Option(
+            help="Threshold temperature for truncating. Can be a temperature or a fraction. If a fraction is given, the threshold temperature will be computed as threshold*Tmax."
+        ),
+    ] = "0.001",
+    # line_count: Annotated[
+    #     float,
+    #     typer.Option(help="Line count for truncating."),
+    # ],
+):
+    """
+    Truncate a temperature history file, removing all point in the end of the history where the temperature is below threshold*Tmax.
+    This is used to decrease the size of the temperature history so that computing damage thresholds is faster.
+    """
+    threshold = units.Q_(threshold)
+    if not threshold.check("") and not threshold.check("K"):
+        raise typer.Exit(f"threshold must be a temperature or dimensionless")
+
+    configs = []
+    for file in temperature_history_file:
+        configs.append({"file": file, "threshold": threshold})
+    with multiprocessing.Pool() as pool:
+        for r in pool.imap_unordered(truncate_temperature_history_file_job, configs):
+            pass

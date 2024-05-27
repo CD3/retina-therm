@@ -69,6 +69,7 @@ def load_configs(config_files: typing.List[pathlib.Path]):
             # then we just want to add it to the set of configs.
             config = yaml.safe_load(doc_texts[0])
             config = fspathtree(config)
+            config["this_file"] = str(file)
             configs.append(config)
         else:
             # if there are more then on document, then we want
@@ -84,6 +85,7 @@ def load_configs(config_files: typing.List[pathlib.Path]):
                 config = pydantic.v1.utils.deep_update(config, c)
                 # config.update(c)
                 config = fspathtree(config)
+                config["this_file"] = str(file)
                 configs.append(config)
 
     # expand batch parameters
