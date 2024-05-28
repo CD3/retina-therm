@@ -48,10 +48,14 @@ specifying the configuration file.
 $ retina-therm temperature-rise config.yml
 ```
 
-Here is an example configuration that simulates one of the exposures simulated by
+Here is an example configuration that computes the temperature rise for one of the exposures simulated by
 [Mainster in 1970](https://pubmed.ncbi.nlm.nih.gov/5416049/) (This is a great paper by
 the way).
 
+<!---
+tag: mainster
+file: doc/examples/CONFIG-mainster.yml
+-->
 ```yaml
 thermal:
     k: 1.5e-3 cal / K / s / cm
@@ -73,16 +77,60 @@ laser:
 simulation:
   sensor:
     z: 1 um
+    r: 0 um
   time:
     max: 1 s
     dt: 10 us
-  datout: retina-therm-{c[cmd]}-{c[laser/R]}.txt
-  with_units: False
-  use_multi_precision: False
-  use_aoproximate: True
+  output_file : mainster-output/Tvst-{c[laser/R]}.txt
 ```
+
+
 
 Note how physical quantities are given with units. `retina-therm` uses
 [Pint](https://pint.readthedocs.io/en/stable/) internally
 to do unit conversions, so you can specify configuration parameters in whatever unit you
 have, no need to convert beforehand.
+
+## Batch Simulations
+
+A configuration file can specify a _set_ of configurations to run. Multiple values can be given for any configuration parameter
+using the `@batch` keyword, in which case `retina-therm` will run a simulation for each value. In the Mainster example above, we
+could run a calculation for each of the beam sizes used by Minster with the following configuration.
+<!---
+tag: mainster
+file: doc/examples/CONFIG-mainster-batch.yml
+-->
+```yaml
+thermal:
+    k: 1.5e-3 cal / K / s / cm
+    rho: 1 g/cm^3
+    c: 1 cal / K /g
+layers:
+  - mua: 310 1/cm
+    d: 10 um
+    z0: 0 um
+  - mua: 53 1/cm
+    d: 100 um
+    z0: 10 um
+laser:
+  wavelength: 700 nm
+  duration: 10 s
+  E0: 1 cal/s/cm^2
+  R: '@batch'
+    - 10 um
+    - 50 um
+    - 100 um
+    - 500 um
+    - 1000 um
+
+simulation:
+  sensor:
+    z: 1 um
+    r: 0 um
+  time:
+    max: 1 s
+    dt: 10 us
+  output_file : mainster-output/Tvst-{c[laser/R]}.txt
+```
+Instead of giving a value to `laser.R`, we use a nested object with a field named `@batch` (we have to quote the field name here since it contains an @ character)
+and list the values for the parameter. `retina-therm` will run a calculation for each of the 5 configurations in parallel.

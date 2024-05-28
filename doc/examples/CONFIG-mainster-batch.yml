@@ -1,0 +1,31 @@
+thermal:
+    k: 1.5e-3 cal / K / s / cm
+    rho: 1 g/cm^3
+    c: 1 cal / K /g
+layers:
+  - mua: 310 1/cm
+    d: 10 um
+    z0: 0 um
+  - mua: 53 1/cm
+    d: 100 um
+    z0: 10 um
+laser:
+  wavelength: 700 nm
+  duration: 10 s
+  E0: 1 cal/s/cm^2
+  R:
+    '@batch':
+      - 10 um
+      - 50 um
+      - 100 um
+      - 500 um
+      - 1000 um
+
+simulation:
+  sensor:
+    z: 1 um
+    r: 0 um
+  time:
+    max: 1 s
+    dt: 10 us
+  output_file : mainster-output/Tvst-{c[laser/R]}.txt
