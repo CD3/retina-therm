@@ -21,6 +21,7 @@ from retina_therm import greens_functions, multi_pulse_builder, units, utils
 from . import config_utils, utils
 
 app = typer.Typer()
+console = rich.console.Console()
 
 
 invoked_subcommand = None
@@ -275,7 +276,6 @@ def compute_tissue_properties(config):
 def temperature_rise_job(config):
     config_id = config_utils.get_id(config)
     config = compute_tissue_properties(config)
-    stdout, stderr = get_output_streams(config)
 
     if "laser/profile" not in config:
         config["laser/profile"] = "flattop"
@@ -310,38 +310,38 @@ def temperature_rise_job(config):
 
     method = config.get("simulation/temperature_rise/method", "quad")
     if method not in temperature_rise_integration_methods + ["undefined"]:
-        rich.print(f"[red]Unrecognized integration method '{method}'[/red]")
-        rich.print(
-            f"[red]Please use one of {', '.join(temperature_rise_integration_methods)}[/red]"
+        console.print(f"Unrecognized integration method '{method}'")
+        console.print(
+            f"Please use one of {', '.join(temperature_rise_integration_methods)}"
         )
         return
 
-    print("Computing temperature rise...")
+    console.print("Computing temperature rise...", end="")
     T = G.temperature_rise(z, r, t, method=method)
-    print("done.")
-    print("Writing temperature rise...")
+    console.print("done.")
+    console.print("Writing output files...", end="")
     ctx = {
         "config_id": config_id,
         "this_file_stem": Path(config["this_file"]).stem,
         "c": config,
     }
-    output_filename = config.get("simulation/output_file", "{this_file_stem}-Tvst.txt")
-    output_filename = output_filename.format(**ctx).replace(" ", "_")
 
-    output_config_filename = config.get("simulation/output_config_file", None)
-    if output_config_filename:
-        output_config_filename = output_config_filename.format(**ctx).replace(" ", "_")
+    output_paths = {}
+    for k in ["simulation/output_file", "simulation/output_config_file"]:
+        filename = config.get(k, None)
+        output_paths[k + "_path"] = Path("/dev/stdout")
+        if filename is not None:
+            filename = filename.format(**ctx).replace(" ", "_")
+            path = Path(filename)
+            output_paths[k + "_path"] = path
+            if path.parent != Path():
+                path.parent.mkdir(parents=True, exist_ok=True)
 
-    output_path = Path(output_filename)
-    if output_path.parent != Path():
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-    if output_config_filename is not None:
-        output_config_path = Path(output_config_filename)
-        if output_config_path.parent != Path():
-            output_config_path.parent.mkdir(parents=True, exist_ok=True)
-        Path(output_config_filename).write_text(yaml.dump(config))
-    numpy.savetxt(output_path, numpy.c_[t, T])
-    print("done.")
+    output_paths["simulation/output_config_file_path"].write_text(
+        yaml.dump(config.tree)
+    )
+    numpy.savetxt(output_paths["simulation/output_file_path"], numpy.c_[t, T])
+    console.print("done.")
 
 
 @app.command()
@@ -388,9 +388,15 @@ def temperature_rise(
     configs_to_run = list(filter(lambda c: config_utils.get_id(c) in ids, configs))
     if len(configs_to_run) == 0:
         rich.print("[orange]No configurations matched list of IDs to run[/orange]")
+    if len(configs_to_run) > 1:
+        # disable printing status information when we are processing multiple configurations
+        console.print = lambda *args, **kwargs: None
 
     with multiprocessing.Pool() as pool:
-        for r in pool.imap_unordered(temperature_rise_job, configs_to_run):
+        for r in tqdm(
+            pool.imap_unordered(temperature_rise_job, configs_to_run),
+            total=len(configs_to_run),
+        ):
             pass
 
     raise typer.Exit(0)
@@ -462,7 +468,9 @@ def multipulse_microcavitation_threshold(
 
 def multiple_pulse_job(config):
     config_id = config_utils.get_id(config)
-    print("Loading base temperature history for building multiple-pulse history.")
+    console.print(
+        "Loading base temperature history for building multiple-pulse history."
+    )
     input_file = Path(config["input_file"])
     data = numpy.loadtxt(config["input_file"])
     t = data[:, 0]
@@ -525,10 +533,10 @@ def multiple_pulse_job(config):
     for c in contributions:
         builder.add_contribution(c["arrival_time"], c["scale"])
 
-    print("Building temperature history")
+    console.print("Building temperature history")
     Tmp = builder.build()
 
-    print("Writing temperature history")
+    console.print("Writing temperature history")
 
     data[:, 1] = Tmp
 
@@ -543,20 +551,20 @@ def multiple_pulse_job(config):
         "n": config.get("/N", "None"),
         "T": config.get("/T", "None").replace(" ", "_"),
     }
-    output_filename = config.get("output_file", "{input_file_stem}-MP.txt")
-    output_filename = output_filename.format(**ctx)
-    output_path = Path(output_filename)
-    output_config = None
-    if output_path.parent != Path():
-        output_path.parent.mkdir(exist_ok=True, parents=True)
-        output_config = output_path.parent / "config.yml"
-    else:
-        config_output = Path("CONFIG-" + str(output_path))
 
-    if output_config:
-        output_config.write_text(yaml.dump(config.tree))
+    output_paths = {}
+    for k in ["output_file", "output_config_file"]:
+        filename = config.get(k, None)
+        output_paths[k + "_path"] = Path("/dev/stdout")
+        if filename is not None:
+            filename = filename.format(**ctx).replace(" ", "_")
+            path = Path(filename)
+            output_paths[k + "_path"] = path
+            if path.parent != Path():
+                path.parent.mkdir(parents=True, exist_ok=True)
 
-    numpy.savetxt(output_filename, data)
+    output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
+    numpy.savetxt(output_paths["output_file_path"], data)
 
 
 @app.command()
@@ -586,8 +594,14 @@ def multiple_pulse(
         ids = config_ids
 
     configs_to_run = list(filter(lambda c: config_utils.get_id(c) in ids, configs))
+    if len(configs_to_run) > 1:
+        # disable printing status information when we are processing multiple configurations
+        console.print = lambda *args, **kwargs: None
     with multiprocessing.Pool() as pool:
-        for r in pool.imap_unordered(multiple_pulse_job, configs_to_run):
+        for r in tqdm(
+            pool.imap_unordered(multiple_pulse_job, configs_to_run),
+            total=len(configs_to_run),
+        ):
             pass
 
 
