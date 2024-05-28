@@ -116,12 +116,13 @@ laser:
   wavelength: 700 nm
   duration: 10 s
   E0: 1 cal/s/cm^2
-  R: '@batch'
-    - 10 um
-    - 50 um
-    - 100 um
-    - 500 um
-    - 1000 um
+  R:
+    '@batch':
+      - 10 um
+      - 50 um
+      - 100 um
+      - 500 um
+      - 1000 um
 
 simulation:
   sensor:
