@@ -1,7 +1,9 @@
 import copy
 import importlib.resources
 import itertools
+import math
 
+import numpy
 import scipy
 import wasmer
 from fspathtree import fspathtree
@@ -21,6 +23,7 @@ if marcum_q_wasm_module_file.exists():
 
     wasm_instance = wasmer.Instance(wasm_module, wasm_import_object)
     have_marcum_q_wasm_module = True
+# have_marcum_q_wasm_module = False
 
 
 def bisect(f, a, b, tol=1e-8, max_iter=1000):
@@ -52,7 +55,11 @@ def MarcumQFunction_PYTHON(nu, a, b):
 if have_marcum_q_wasm_module:
 
     def MarcumQFunction_WASM(nu, a, b):
-        return wasm_instance.exports.MarcumQFunction(float(nu), float(a), float(b))
+        ret = wasm_instance.exports.MarcumQFunction(float(nu), float(a), float(b))
+        if math.isnan(ret):
+            # fall back to python implementation if we get a nan
+            ret = MarcumQFunction_PYTHON(nu, a, b)
+        return ret
 
     MarcumQFunction = MarcumQFunction_WASM
 else:
