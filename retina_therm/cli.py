@@ -655,3 +655,45 @@ def truncate_temperature_history_file(
     with multiprocessing.Pool() as pool:
         for r in pool.imap_unordered(truncate_temperature_history_file_job, configs):
             pass
+
+
+@app.command()
+def print_config_ids(
+    config_files: List[Path],
+):
+    """Print IDs of configuration in CONFIG_FILES. Useful for determining if a configuration has already been ran."""
+    configs = config_utils.load_configs(config_files)
+    config_ids = list(map(config_utils.get_id, configs))
+    for _id in config_ids:
+        print(_id)
+
+
+@app.command()
+def expand_configs(
+    config_files: List[Path],
+    output: Annotated[
+        str, typer.Option(help="Format string for generating output file names.")
+    ] = "{this_file_stem}-{i}.{this_file_ext}",
+):
+    """Expand configuration files and write out to separate files."""
+    configs = config_utils.load_configs(config_files)
+    for i, config in enumerate(configs):
+        this_file = Path(config["this_file"])
+        ctx = {
+            "this_file": str(this_file),
+            "this_file_stem": this_file.stem,
+            "this_file_suffix": this_file.suffix,
+            "this_file_ext": this_file.suffix[1:],
+            "config_id": config_utils.get_id(config),
+            "i": i,
+        }
+
+        output_file = Path(output.format(**ctx))
+        if output_file in config_files:
+            raise RuntimeError(
+                f"Output config file {output_file} would overwrite an input file."
+            )
+
+        if output_file.parent != Path():
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+        output_file.write_text(yaml.dump(config.tree))

@@ -1,0 +1,19 @@
+build-and-run: build  run
+
+clean:
+  rm build -rf
+
+install:
+  conan install conan --build missing --output-folder . --profile:build conan/profile/emscripten-build --profile:host conan/profile/emscripten-host
+
+configure:
+  cmake . -B build -DCMAKE_TOOLCHAIN_FILE=build/generators/conan_toolchain.cmake
+
+build:
+  cmake --build build --config Release --verbose
+  ln -fs build/Release/marcum_q.wasm
+
+full: clean install configure build
+
+run:
+  poetry run python ./run-benchmarks.py

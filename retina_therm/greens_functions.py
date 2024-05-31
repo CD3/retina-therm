@@ -384,6 +384,8 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
         super().__init__(G)
         self.max_subinterval_range = Q_(0.1, "s")
 
+        self.progress = None
+
     def temperature_rise(
         self,
         z: float | mp.mpf,

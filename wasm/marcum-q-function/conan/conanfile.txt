@@ -1,0 +1,12 @@
+[requires]
+boost/1.81.0
+
+[layout]
+cmake_layout
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[options]
+boost/*:header_only = True

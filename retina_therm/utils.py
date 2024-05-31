@@ -1,8 +1,26 @@
 import copy
+import importlib.resources
 import itertools
 
 import scipy
+import wasmer
 from fspathtree import fspathtree
+
+marcum_q_wasm_module_file = importlib.resources.path(
+    "retina_therm.wasm", "marcum_q.wasm"
+)
+have_marcum_q_wasm_module = False
+# use a
+if marcum_q_wasm_module_file.exists():
+    wasm_store = wasmer.Store()
+    wasm_module = wasmer.Module(wasm_store, marcum_q_wasm_module_file.read_bytes())
+
+    wasi_version = wasmer.wasi.get_version(wasm_module, strict=True)
+    wasi_env = wasmer.wasi.StateBuilder("marcum_q").finalize()
+    wasm_import_object = wasi_env.generate_import_object(wasm_store, wasi_version)
+
+    wasm_instance = wasmer.Instance(wasm_module, wasm_import_object)
+    have_marcum_q_wasm_module = True
 
 
 def bisect(f, a, b, tol=1e-8, max_iter=1000):
@@ -27,5 +45,15 @@ def bisect(f, a, b, tol=1e-8, max_iter=1000):
     return (a, b)
 
 
-def MarcumQFunction(nu, a, b):
+def MarcumQFunction_PYTHON(nu, a, b):
     return 1 - scipy.stats.ncx2.cdf(b**2, 2 * nu, a**2)
+
+
+if have_marcum_q_wasm_module:
+
+    def MarcumQFunction_WASM(nu, a, b):
+        return wasm_instance.exports.MarcumQFunction(float(nu), float(a), float(b))
+
+    MarcumQFunction = MarcumQFunction_WASM
+else:
+    MarcumQFunction = MarcumQFunction_PYTHON
