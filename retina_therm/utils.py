@@ -23,7 +23,9 @@ if marcum_q_wasm_module_file.exists():
 
     wasm_instance = wasmer.Instance(wasm_module, wasm_import_object)
     have_marcum_q_wasm_module = True
-# have_marcum_q_wasm_module = False
+# DISABLE FOR NOW
+# getting WASI error when tyring to run large batch configs
+have_marcum_q_wasm_module = False
 
 
 def bisect(f, a, b, tol=1e-8, max_iter=1000):
