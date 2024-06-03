@@ -1,5 +1,6 @@
 import copy
 import math
+from .signals import Signal
 
 import numpy
 import scipy
@@ -323,6 +324,9 @@ class MultiLayerGreensFunction:
 class GreensFunctionIntegrator:
     def __init__(self, G) -> None:
         self.G = G
+        self.progress = Signal()
+        self.status = Signal()
+        
 
 
 class GreensFunctionTrapezoidIntegrator(GreensFunctionIntegrator):
@@ -384,8 +388,6 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
         super().__init__(G)
         self.max_subinterval_range = Q_(0.1, "s")
 
-        self.progress = None
-
     def temperature_rise(
         self,
         z: float | mp.mpf,
@@ -436,6 +438,7 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
 
         dTheta = numpy.zeros([len(ts)])
         N = math.ceil((T - ton) / t0)
+        num_iters = len(ts)
         for i, t in enumerate(ts):
             n = math.ceil((t - ton) / t0)
             for j in range(min(n, N)):
@@ -445,6 +448,7 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
                     dTheta[i] += calc_integral(
                         (t - ton) - j * t0 - tau, (t - ton) - j * t0
                     )
+            self.progress.emit(i+1, num_iters)
 
         return dTheta
 
@@ -461,6 +465,8 @@ class CWRetinaLaserExposure:
 
         self.start = config.laser.start
         self.duration = config.laser.duration
+
+        self.progress = Signal()
 
     def make_integrator_config(self):
         config = {
@@ -481,6 +487,7 @@ class CWRetinaLaserExposure:
             Integrator = GreensFunctionTrapezoidIntegrator(self.G)
         if method == "quad":
             Integrator = GreensFunctionQuadIntegrator(self.G)
+        Integrator.progress.connect( lambda i,n: self.progress.emit(i,n))
 
         return Integrator.temperature_rise(z, r, t, self.make_integrator_config())
 

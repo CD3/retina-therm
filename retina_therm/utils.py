@@ -5,24 +5,30 @@ import math
 
 import numpy
 import scipy
-import wasmer
 from fspathtree import fspathtree
 
 marcum_q_wasm_module_file = importlib.resources.path(
     "retina_therm.wasm", "marcum_q.wasm"
 )
+try:
+    import wasmer
+
+    have_wasmer_module = True
+except:
+    have_wasmer_module = False
+
 have_marcum_q_wasm_module = False
-# use a
-if marcum_q_wasm_module_file.exists():
-    wasm_store = wasmer.Store()
-    wasm_module = wasmer.Module(wasm_store, marcum_q_wasm_module_file.read_bytes())
+if have_wasmer_module:
+    if marcum_q_wasm_module_file.exists():
+        wasm_store = wasmer.Store()
+        wasm_module = wasmer.Module(wasm_store, marcum_q_wasm_module_file.read_bytes())
 
-    wasi_version = wasmer.wasi.get_version(wasm_module, strict=True)
-    wasi_env = wasmer.wasi.StateBuilder("marcum_q").finalize()
-    wasm_import_object = wasi_env.generate_import_object(wasm_store, wasi_version)
+        wasi_version = wasmer.wasi.get_version(wasm_module, strict=True)
+        wasi_env = wasmer.wasi.StateBuilder("marcum_q").finalize()
+        wasm_import_object = wasi_env.generate_import_object(wasm_store, wasi_version)
 
-    wasm_instance = wasmer.Instance(wasm_module, wasm_import_object)
-    have_marcum_q_wasm_module = True
+        wasm_instance = wasmer.Instance(wasm_module, wasm_import_object)
+        have_marcum_q_wasm_module = True
 # DISABLE FOR NOW
 # getting WASI error when tyring to run large batch configs
 have_marcum_q_wasm_module = False

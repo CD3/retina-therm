@@ -18,7 +18,7 @@ from tqdm import tqdm
 import retina_therm
 from retina_therm import greens_functions, multi_pulse_builder, units, utils
 
-from . import config_utils, utils
+from . import config_utils, parallel_jobs, utils
 
 app = typer.Typer()
 console = rich.console.Console()
@@ -344,6 +344,78 @@ def temperature_rise_job(config):
     console.print("done.")
 
 
+class TemperatureRiseProcess(parallel_jobs.JobProcess):
+    def run_job(self, config):
+        config_id = config_utils.get_id(config)
+        config = compute_tissue_properties(config)
+
+        if "laser/profile" not in config:
+            config["laser/profile"] = "flattop"
+        if "simulation/with_units" not in config:
+            config["simulation/with_units"] = False
+        if "simulation/use_approximations" not in config:
+            config["simulation/with_approximations"] = False
+        if "simulation/use_multi_precision" not in config:
+            config["simulation/with_multi_precision"] = False
+
+        if "laser/pulse_duration" not in config:
+            G = greens_functions.CWRetinaLaserExposure(config.tree)
+        else:
+            G = greens_functions.PulsedRetinaLaserExposure(config.tree)
+        z = config.get("sensor/z", "0 um")
+        z = units.Q_(z).to("cm").magnitude
+        r = config.get("sensor/r", "0 um")
+        r = units.Q_(r).to("cm").magnitude
+
+        if config.get("simulation/time/ts", None) is None:
+            dt = config.get("simulation/time/dt", "1 us")
+            dt = units.Q_(dt).to("s").magnitude
+            tmin = config.get("simulation/time/min", "0 second")
+            tmin = units.Q_(tmin).to("s").magnitude
+            tmax = config.get("simulation/time/max", "10 second")
+            tmax = units.Q_(tmax).to("s").magnitude
+            t = numpy.arange(tmin, tmax, dt)
+        else:
+            t = numpy.array(
+                [
+                    units.Q_(time).to("s").magnitude
+                    for time in config["simulation/time/ts"]
+                ]
+            )
+
+        method = config.get("simulation/temperature_rise/method", "quad")
+        if method not in temperature_rise_integration_methods + ["undefined"]:
+            raise RuntimeError(f"Unrecognized integration method '{method}'")
+
+        self.status.emit("Computing temperature rise...")
+        G.progress.connect( lambda i,n: self.progress.emit(i,n))
+        T = G.temperature_rise(z, r, t, method=method)
+        self.status.emit("done.")
+        self.status.emit("Writing output files...")
+        ctx = {
+            "config_id": config_id,
+            "this_file_stem": Path(config["this_file"]).stem,
+            "c": config,
+        }
+
+        output_paths = {}
+        for k in ["simulation/output_file", "simulation/output_config_file"]:
+            filename = config.get(k, None)
+            output_paths[k + "_path"] = Path("/dev/stdout")
+            if filename is not None:
+                filename = filename.format(**ctx).replace(" ", "_")
+                path = Path(filename)
+                output_paths[k + "_path"] = path
+                if path.parent != Path():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+
+        output_paths["simulation/output_config_file_path"].write_text(
+            yaml.dump(config.tree)
+        )
+        numpy.savetxt(output_paths["simulation/output_file_path"], numpy.c_[t, T])
+        self.status.emit("done.")
+
+
 @app.command()
 def temperature_rise(
     config_files: Path,
@@ -392,12 +464,21 @@ def temperature_rise(
         # disable printing status information when we are processing multiple configurations
         console.print = lambda *args, **kwargs: None
 
-    with multiprocessing.Pool() as pool:
-        for r in tqdm(
-            pool.imap_unordered(temperature_rise_job, configs_to_run),
-            total=len(configs_to_run),
-        ):
-            pass
+    controller = parallel_jobs.Controller(TemperatureRiseProcess)
+    controller.run(configs_to_run)
+    controller.stop()
+
+    # p = TemperatureRiseProcess()
+    # for c in configs_to_run:
+    #     print(f"Running {config_utils.get_id(c)}")
+    #     p.run_job(c)
+
+    # with multiprocessing.Pool() as pool:
+    #     for r in tqdm(
+    #         pool.imap_unordered(temperature_rise_job, configs_to_run),
+    #         total=len(configs_to_run),
+    #     ):
+    #         pass
 
     raise typer.Exit(0)
 
