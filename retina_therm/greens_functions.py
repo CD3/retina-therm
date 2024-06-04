@@ -1,6 +1,5 @@
 import copy
 import math
-from .signals import Signal
 
 import numpy
 import scipy
@@ -8,6 +7,7 @@ from mpmath import mp
 from tqdm import tqdm
 
 from .schemas import *
+from .signals import Signal
 from .units import *
 from .utils import MarcumQFunction
 
@@ -326,7 +326,6 @@ class GreensFunctionIntegrator:
         self.G = G
         self.progress = Signal()
         self.status = Signal()
-        
 
 
 class GreensFunctionTrapezoidIntegrator(GreensFunctionIntegrator):
@@ -448,7 +447,7 @@ class GreensFunctionQuadIntegrator(GreensFunctionIntegrator):
                     dTheta[i] += calc_integral(
                         (t - ton) - j * t0 - tau, (t - ton) - j * t0
                     )
-            self.progress.emit(i+1, num_iters)
+            self.progress.emit(i + 1, num_iters)
 
         return dTheta
 
@@ -487,7 +486,7 @@ class CWRetinaLaserExposure:
             Integrator = GreensFunctionTrapezoidIntegrator(self.G)
         if method == "quad":
             Integrator = GreensFunctionQuadIntegrator(self.G)
-        Integrator.progress.connect( lambda i,n: self.progress.emit(i,n))
+        Integrator.progress.connect(lambda i, n: self.progress.emit(i, n))
 
         return Integrator.temperature_rise(z, r, t, self.make_integrator_config())
 

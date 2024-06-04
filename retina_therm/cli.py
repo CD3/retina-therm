@@ -273,77 +273,6 @@ def compute_tissue_properties(config):
     return config
 
 
-def temperature_rise_job(config):
-    config_id = config_utils.get_id(config)
-    config = compute_tissue_properties(config)
-
-    if "laser/profile" not in config:
-        config["laser/profile"] = "flattop"
-    if "simulation/with_units" not in config:
-        config["simulation/with_units"] = False
-    if "simulation/use_approximations" not in config:
-        config["simulation/with_approximations"] = False
-    if "simulation/use_multi_precision" not in config:
-        config["simulation/with_multi_precision"] = False
-
-    if "laser/pulse_duration" not in config:
-        G = greens_functions.CWRetinaLaserExposure(config.tree)
-    else:
-        G = greens_functions.PulsedRetinaLaserExposure(config.tree)
-    z = config.get("sensor/z", "0 um")
-    z = units.Q_(z).to("cm").magnitude
-    r = config.get("sensor/r", "0 um")
-    r = units.Q_(r).to("cm").magnitude
-
-    if config.get("simulation/time/ts", None) is None:
-        dt = config.get("simulation/time/dt", "1 us")
-        dt = units.Q_(dt).to("s").magnitude
-        tmin = config.get("simulation/time/min", "0 second")
-        tmin = units.Q_(tmin).to("s").magnitude
-        tmax = config.get("simulation/time/max", "10 second")
-        tmax = units.Q_(tmax).to("s").magnitude
-        t = numpy.arange(tmin, tmax, dt)
-    else:
-        t = numpy.array(
-            [units.Q_(time).to("s").magnitude for time in config["simulation/time/ts"]]
-        )
-
-    method = config.get("simulation/temperature_rise/method", "quad")
-    if method not in temperature_rise_integration_methods + ["undefined"]:
-        console.print(f"Unrecognized integration method '{method}'")
-        console.print(
-            f"Please use one of {', '.join(temperature_rise_integration_methods)}"
-        )
-        return
-
-    console.print("Computing temperature rise...", end="")
-    T = G.temperature_rise(z, r, t, method=method)
-    console.print("done.")
-    console.print("Writing output files...", end="")
-    ctx = {
-        "config_id": config_id,
-        "this_file_stem": Path(config["this_file"]).stem,
-        "c": config,
-    }
-
-    output_paths = {}
-    for k in ["simulation/output_file", "simulation/output_config_file"]:
-        filename = config.get(k, None)
-        output_paths[k + "_path"] = Path("/dev/stdout")
-        if filename is not None:
-            filename = filename.format(**ctx).replace(" ", "_")
-            path = Path(filename)
-            output_paths[k + "_path"] = path
-            if path.parent != Path():
-                path.parent.mkdir(parents=True, exist_ok=True)
-
-    output_paths["simulation/output_config_file_path"].write_text(
-        yaml.dump(config.tree)
-    )
-    numpy.savetxt(output_paths["simulation/output_file_path"], numpy.c_[t, T])
-    console.print("done.")
-
-
 class TemperatureRiseProcess(parallel_jobs.JobProcess):
     def run_job(self, config):
         config_id = config_utils.get_id(config)
@@ -388,7 +317,7 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
             raise RuntimeError(f"Unrecognized integration method '{method}'")
 
         self.status.emit("Computing temperature rise...")
-        G.progress.connect( lambda i,n: self.progress.emit(i,n))
+        G.progress.connect(lambda i, n: self.progress.emit(i, n))
         T = G.temperature_rise(z, r, t, method=method)
         self.status.emit("done.")
         self.status.emit("Writing output files...")
@@ -468,18 +397,6 @@ def temperature_rise(
     controller.run(configs_to_run)
     controller.stop()
 
-    # p = TemperatureRiseProcess()
-    # for c in configs_to_run:
-    #     print(f"Running {config_utils.get_id(c)}")
-    #     p.run_job(c)
-
-    # with multiprocessing.Pool() as pool:
-    #     for r in tqdm(
-    #         pool.imap_unordered(temperature_rise_job, configs_to_run),
-    #         total=len(configs_to_run),
-    #     ):
-    #         pass
-
     raise typer.Exit(0)
 
 
@@ -547,105 +464,107 @@ def multipulse_microcavitation_threshold(
             stdout.write(f"{n} {H}\n")
 
 
-def multiple_pulse_job(config):
-    config_id = config_utils.get_id(config)
-    console.print(
-        "Loading base temperature history for building multiple-pulse history."
-    )
-    input_file = Path(config["input_file"])
-    data = numpy.loadtxt(config["input_file"])
-    t = data[:, 0]
-    T = data[:, 1]
+class MultiplePulseProcess(parallel_jobs.JobProcess):
+    def run_job(self, config):
+        config_id = config_utils.get_id(config)
+        self.status.emit(
+            "Loading base temperature history for building multiple-pulse history."
+        )
+        input_file = Path(config["input_file"])
+        data = numpy.loadtxt(config["input_file"])
+        t = data[:, 0]
+        T = data[:, 1]
 
-    if not multi_pulse_builder.is_uniform_spaced(t):
-        tp = multi_pulse_builder.regularize_grid(t)
-        Tp = multi_pulse_builder.interpolate_temperature_history(t, T, tp)
-        t = tp
-        T = Tp
-        data = numpy.zeros([len(tp), 2])
-        data[:, 0] = t
+        if not multi_pulse_builder.is_uniform_spaced(t):
+            tp = multi_pulse_builder.regularize_grid(t)
+            Tp = multi_pulse_builder.interpolate_temperature_history(t, T, tp)
+            t = tp
+            T = Tp
+            data = numpy.zeros([len(tp), 2])
+            data[:, 0] = t
 
-    builder = multi_pulse_builder.MultiPulseBuilder()
+        builder = multi_pulse_builder.MultiPulseBuilder()
+        builder.progress.connect(lambda i, n: self.progress.emit(i, n))
 
-    builder.set_temperature_history(t, T)
+        builder.set_temperature_history(t, T)
 
-    # if a pulse duration is given, then it means we have a CW exposure
-    # and we need to create the single pulse exposure by adding a -1 scale
-    if "/tau" in config:
-        builder.add_contribution(0, 1)
-        builder.add_contribution(units.Q_(config["tau"]).to("s").magnitude, -1)
-        Tsp = builder.build()
-        builder.set_temperature_history(t, Tsp)
-        builder.clear_contributions()
+        # if a pulse duration is given, then it means we have a CW exposure
+        # and we need to create the single pulse exposure by adding a -1 scale
+        if "/tau" in config:
+            builder.add_contribution(0, 1)
+            builder.add_contribution(units.Q_(config["tau"]).to("s").magnitude, -1)
+            Tsp = builder.build()
+            builder.set_temperature_history(t, Tsp)
+            builder.clear_contributions()
 
-    contributions = []
-    if "/contributions" in config:
-        for c in config["/contributions"]:
-            contributions.append(
-                {
-                    "arrival_time": units.Q_(c["arrival_time"]).to("s").magnitude,
-                    "scale": float(c["scale"]),
-                }
-            )
-    if "/T" not in config:
-        config["/T"] = "{:~}".format(units.Q_(t[-1], "s"))
+        contributions = []
+        if "/contributions" in config:
+            for c in config["/contributions"]:
+                contributions.append(
+                    {
+                        "arrival_time": units.Q_(c["arrival_time"]).to("s").magnitude,
+                        "scale": float(c["scale"]),
+                    }
+                )
+        if "/T" not in config:
+            config["/T"] = "{:~}".format(units.Q_(t[-1], "s"))
 
-    if "/t0" in config:
-        t0 = units.Q_(config["/t0"])
-        prf = (1 / t0).to("Hz")
-        T = units.Q_(config["/T"])
-        config["/prf"] = f"{prf:~}"
+        if "/t0" in config:
+            t0 = units.Q_(config["/t0"])
+            prf = (1 / t0).to("Hz")
+            T = units.Q_(config["/T"])
+            config["/prf"] = f"{prf:~}"
 
-        if "/N" not in config:
-            N = (T * prf).magnitude
-            config["/N"] = f"{N:.2f}"
+            if "/N" not in config:
+                N = (T * prf).magnitude
+                config["/N"] = f"{N:.2f}"
 
-        N = units.Q_(config["/N"])
+            N = units.Q_(config["/N"])
 
-        arrival_time = units.Q_(0, "s")
-        n = 0
-        while arrival_time.to("s").magnitude < t[-1] and n < N:
-            contributions.append(
-                {"arrival_time": arrival_time.to("s").magnitude, "scale": 1}
-            )
-            arrival_time += t0
-            n += 1
+            arrival_time = units.Q_(0, "s")
+            n = 0
+            while arrival_time.to("s").magnitude < t[-1] and n < N:
+                contributions.append(
+                    {"arrival_time": arrival_time.to("s").magnitude, "scale": 1}
+                )
+                arrival_time += t0
+                n += 1
 
-    for c in contributions:
-        builder.add_contribution(c["arrival_time"], c["scale"])
+        for c in contributions:
+            builder.add_contribution(c["arrival_time"], c["scale"])
 
-    console.print("Building temperature history")
-    Tmp = builder.build()
+        self.status.emit("Building temperature history")
+        Tmp = builder.build()
 
-    console.print("Writing temperature history")
+        self.status.emit("Writing temperature history")
 
-    data[:, 1] = Tmp
+        data[:, 1] = Tmp
 
-    ctx = {
-        "config_id": config_id,
-        "input_filename_stem": input_file.stem,
-        "tau": config.get("/tau", "None").replace(" ", "_"),
-        "t0": config.get("/t0", "None").replace(" ", "_"),
-        "prf": config.get("/prf", "None").replace(" ", "_"),
-        "PRF": config.get("/prf", "None").replace(" ", "_"),
-        "N": config.get("/N", "None"),
-        "n": config.get("/N", "None"),
-        "T": config.get("/T", "None").replace(" ", "_"),
-    }
+        ctx = {
+            "config_id": config_id,
+            "input_filename_stem": input_file.stem,
+            "tau": config.get("/tau", "None").replace(" ", "_"),
+            "t0": config.get("/t0", "None").replace(" ", "_"),
+            "prf": config.get("/prf", "None").replace(" ", "_"),
+            "PRF": config.get("/prf", "None").replace(" ", "_"),
+            "N": config.get("/N", "None"),
+            "n": config.get("/N", "None"),
+            "T": config.get("/T", "None").replace(" ", "_"),
+        }
 
-    output_paths = {}
-    for k in ["output_file", "output_config_file"]:
-        filename = config.get(k, None)
-        output_paths[k + "_path"] = Path("/dev/stdout")
-        if filename is not None:
-            filename = filename.format(**ctx).replace(" ", "_")
-            path = Path(filename)
-            output_paths[k + "_path"] = path
-            if path.parent != Path():
-                path.parent.mkdir(parents=True, exist_ok=True)
+        output_paths = {}
+        for k in ["output_file", "output_config_file"]:
+            filename = config.get(k, None)
+            output_paths[k + "_path"] = Path("/dev/stdout")
+            if filename is not None:
+                filename = filename.format(**ctx).replace(" ", "_")
+                path = Path(filename)
+                output_paths[k + "_path"] = path
+                if path.parent != Path():
+                    path.parent.mkdir(parents=True, exist_ok=True)
 
-    output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
-    numpy.savetxt(output_paths["output_file_path"], data)
+        output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
+        numpy.savetxt(output_paths["output_file_path"], data)
 
 
 @app.command()
@@ -678,12 +597,10 @@ def multiple_pulse(
     if len(configs_to_run) > 1:
         # disable printing status information when we are processing multiple configurations
         console.print = lambda *args, **kwargs: None
-    with multiprocessing.Pool() as pool:
-        for r in tqdm(
-            pool.imap_unordered(multiple_pulse_job, configs_to_run),
-            total=len(configs_to_run),
-        ):
-            pass
+
+    controller = parallel_jobs.Controller(MultiplePulseProcess)
+    controller.run(configs_to_run)
+    controller.stop()
 
 
 def truncate_temperature_history_file_job(config):

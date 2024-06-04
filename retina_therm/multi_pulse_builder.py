@@ -4,6 +4,8 @@ from typing import Optional
 import numpy
 import scipy
 
+from .signals import Signal
+
 
 def is_uniform_spaced(x: numpy.array, tol: float = 1e-10):
     dx = x[1] - x[0]
@@ -47,6 +49,9 @@ class MultiPulseBuilder:
         self.arrival_times = []
         self.scales = []
 
+        self.progress = Signal()
+        self.status = Signal()
+
     def set_baseline_temperature(self, val: float) -> None:
         self.T0 = val
 
@@ -88,7 +93,8 @@ class MultiPulseBuilder:
 
         T = numpy.zeros([len(t)])
 
-        for i in range(len(self.arrival_times)):
+        N = len(self.arrival_times)
+        for i in range(N):
             if self.arrival_times[i] > t[-1]:
                 continue
 
@@ -98,6 +104,7 @@ class MultiPulseBuilder:
                 T[offset:] += self.scales[i] * self.dT[:-offset]
             else:
                 T += self.dT
+            self.progress.emit(i, N)
 
         T += self.T0
 
