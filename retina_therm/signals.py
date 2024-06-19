@@ -43,9 +43,17 @@ class Signal:
         self.__paused = set()
 
     def emit(self, *args, **kwargs):
+        self(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
         # note that we don't do any checking of the signature here.
         # slots are responsible for accepting the arguments that a signal
         # might pass
         for _id in self.__slots:
             if _id not in self.__paused:
                 self.__slots[_id](*args, **kwargs)
+
+class CheckedSignal(Signal):
+    """A signal that checks function signatures."""
+    pass
+

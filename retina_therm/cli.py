@@ -296,21 +296,52 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         r = config.get("sensor/r", "0 um")
         r = units.Q_(r).to("cm").magnitude
 
-        if config.get("simulation/time/ts", None) is None:
-            dt = config.get("simulation/time/dt", "1 us")
-            dt = units.Q_(dt).to("s").magnitude
-            tmin = config.get("simulation/time/min", "0 second")
-            tmin = units.Q_(tmin).to("s").magnitude
-            tmax = config.get("simulation/time/max", "10 second")
-            tmax = units.Q_(tmax).to("s").magnitude
-            t = numpy.arange(tmin, tmax, dt)
-        else:
+        # if times are given in the config, just them
+        if "simulation/time/ts" in config:
             t = numpy.array(
                 [
                     units.Q_(time).to("s").magnitude
                     for time in config["simulation/time/ts"]
                 ]
             )
+        else:
+            # we want to support specifying the times as a single range,
+            # i.e. "from tmin to tmax by steps of dt"
+            # or multiple ranges
+            # i.e. "from tmin_1 to tmax_1 by steps of dt_1 AND from tmin_2 to tmax_2 by steps of dt_2"
+            # this is usefull for sampling the start of a long exposure at higher resolution than the end.
+            time_configs = []
+            if type(config["simulation/time"].tree) == dict:
+                time_configs.append(config["simulation/time"])
+            else:
+                for c in config["simulation/time"]:
+                    time_configs.append(c)
+
+            time_arrays = []
+            for i, time_config in enumerate(time_configs):
+                dt = units.Q_(time_config.get("dt", "1 us"))
+                # if tmin is given, use it
+                # if it is not given and this is the first config, use 0 s
+                # if it is not given and this is not the first config, use the last config's tmax plus our dt
+                #     if the previous config does not have a tmax, use 10 s...
+                tmin = units.Q_(
+                    time_config.get(
+                        "min",
+                        units.Q_(time_configs[i - 1].get("max", "10 second")) + dt
+                        if i > 0
+                        else "0 second",
+                    )
+                )
+                tmax = units.Q_(time_config.get("max", "10 second"))
+
+                dt = dt.to("s").magnitude
+                tmin = tmin.to("s").magnitude
+                tmax = tmax.to("s").magnitude
+
+                # adding dt/2 here so that tmax will be included in the array
+                t = numpy.arange(tmin, tmax + dt / 2, dt)
+                time_arrays.append(t)
+            t = numpy.concatenate(time_arrays)
 
         method = config.get("simulation/temperature_rise/method", "quad")
         if method not in temperature_rise_integration_methods + ["undefined"]:
@@ -332,7 +363,12 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
             filename = config.get(k, None)
             output_paths[k + "_path"] = Path("/dev/stdout")
             if filename is not None:
-                filename = filename.format(**ctx).replace(" ", "_")
+                try:
+                    filename = filename.format(**ctx).replace(" ", "_")
+                except:
+                    raise RuntimeError(
+                        f"There was an error trying to generate output filename from template '{filename}'."
+                    )
                 path = Path(filename)
                 output_paths[k + "_path"] = path
                 if path.parent != Path():
@@ -348,6 +384,7 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
 @app.command()
 def temperature_rise(
     config_files: Path,
+    jobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
     ids: Annotated[
         List[str],
         typer.Option(
@@ -393,9 +430,14 @@ def temperature_rise(
         # disable printing status information when we are processing multiple configurations
         console.print = lambda *args, **kwargs: None
 
-    controller = parallel_jobs.Controller(TemperatureRiseProcess)
-    controller.run(configs_to_run)
-    controller.stop()
+    if jobs is None or jobs > 1:
+        controller = parallel_jobs.Controller(TemperatureRiseProcess, jobs)
+        controller.run(configs_to_run)
+        controller.stop()
+    else:
+        p = TemperatureRiseProcess()
+        for config in configs_to_run:
+            p.run_job(config)
 
     raise typer.Exit(0)
 
@@ -428,24 +470,9 @@ def multipulse_microcavitation_threshold(
         PRF = units.Q_(config.get("laser/PRF", "1 kHz"))
         t0 = 1 / PRF
         t0 = t0.to("s").magnitude
-        N = 100
+        N = 1000
 
-        stdout = sys.stdout
-        stdout = sys.stderr
-        if config.get("simulation/stdout", None) is not None:
-            stdout = open(
-                config["simulation/stdout"].format(
-                    cmd="multipulse-microcavitation-threshold", c=config
-                ),
-                "w",
-            )
-        if config.get("simulation/stderr", None) is not None:
-            stdout = open(
-                config["simulation/stderr"].format(
-                    cmd="multipulse-microcavitation-threshold", c=config
-                ),
-                "w",
-            )
+        output_file = config.get("simulation/output_file", "Hth_vs_N.txt")
 
         config["laser/E0"] = "1 W/cm^2"  # override user power
         G = greens_functions.MultiLayerGreensFunction(config.tree)
@@ -459,9 +486,10 @@ def multipulse_microcavitation_threshold(
         for i in range(1, len(T)):
             T[i] = T[i - 1] + G(z, r, t0 * i)
 
-        for n in range(1, N):
-            H = (m * T0 - m * Tnuc) / (1 - m * units.Q_(T[n - 1], "K/(J/cm^2)"))
-            stdout.write(f"{n} {H}\n")
+        with output_file.open("w") as f:
+            for n in range(1, N):
+                H = (m * T0 - m * Tnuc) / (1 - m * units.Q_(T[n - 1], "K/(J/cm^2)"))
+                f.write(f"{n} {H}\n")
 
 
 class MultiplePulseProcess(parallel_jobs.JobProcess):
@@ -506,17 +534,35 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
                         "scale": float(c["scale"]),
                     }
                 )
-        if "/T" not in config:
-            config["/T"] = "{:~}".format(units.Q_(t[-1], "s"))
+        config["/tmax"] = "{:~}".format(units.Q_(t[-1], "s"))
+
+        if (
+            "/tau" in config
+            and "/T" in config
+            and "/N" in config
+            and "/t0" not in config
+        ):
+            # if the total exposure time and number of pulses are given, we want
+            # to compute the inter-pulse spacing that would fit the begining of
+            # the first pulse and the end of the last pulse.
+            tau = units.Q_(config["/tau"])
+            T = units.Q_(config["/T"])
+            N = units.Q_(config["/N"])
+            if N < 2:
+                config["/t0"] = config["/tmax"]
+
+            else:
+                t0 = (T - tau) / (N - 1)
+                config["/t0"] = f"{t0:~}"
 
         if "/t0" in config:
             t0 = units.Q_(config["/t0"])
             prf = (1 / t0).to("Hz")
-            T = units.Q_(config["/T"])
             config["/prf"] = f"{prf:~}"
 
             if "/N" not in config:
-                N = (T * prf).magnitude
+                tmax = units.Q_(config["/tmax"])
+                N = (tmax * prf).magnitude
                 config["/N"] = f"{N:.2f}"
 
             N = units.Q_(config["/N"])
@@ -550,6 +596,7 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
             "N": config.get("/N", "None"),
             "n": config.get("/N", "None"),
             "T": config.get("/T", "None").replace(" ", "_"),
+            "c": config,
         }
 
         output_paths = {}
@@ -570,6 +617,7 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
 @app.command()
 def multiple_pulse(
     config_files: List[Path],
+    jobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
     ids: Annotated[
         List[str],
         typer.Option(
@@ -598,31 +646,52 @@ def multiple_pulse(
         # disable printing status information when we are processing multiple configurations
         console.print = lambda *args, **kwargs: None
 
-    controller = parallel_jobs.Controller(MultiplePulseProcess)
-    controller.run(configs_to_run)
-    controller.stop()
+    if jobs is None or jobs > 1:
+        controller = parallel_jobs.Controller(MultiplePulseProcess, jobs)
+        controller.run(configs_to_run)
+        controller.stop()
+    else:
+        p = MultiplePulseProcess()
+        with tqdm(total=len(configs_to_run)) as pbar:
+            for config in configs_to_run:
+                try:
+                    p.run_job(config)
+                except Exception as e:
+                    print("An exception was thrown rile running config")
+                    print(config.tree)
+                    raise e
+                pbar.update(1)
+
+    raise typer.Exit(0)
 
 
-def truncate_temperature_history_file_job(config):
-    file = config["file"]
-    threshold = config["threshold"]
+class TruncateTemperatureProfileProcess(parallel_jobs.JobProcess):
+    def run_job(self, config):
+        file = config["file"]
+        threshold = config["threshold"]
 
-    print(f"Truncating temperature_history in {file}.")
-    data = numpy.loadtxt(file)
-    threshold = units.Q_(threshold)
-    if threshold.check(""):
-        Tmax = max(data[:, 1])
-        Tthreshold = threshold * Tmax
-    elif threshold.check("K"):
-        Tthreshold = threshold
+        self.status(f"Truncating temperature_history in {file}.")
+        self.progress(0, 4)
+        data = numpy.loadtxt(file)
+        self.progress(1, 4)
+        threshold = units.Q_(threshold)
+        if threshold.check(""):
+            Tmax = max(data[:, 1])
+            Tthreshold = threshold.magnitude * Tmax
+        elif threshold.check("K"):
+            Tthreshold = threshold.magnitude
 
-    if data[-1, 1] > Tthreshold:
-        print(f"  {file} already trucated...skipping.")
-        return
+        if data[-1, 1] > Tthreshold:
+            self.status(f"{file} already trucated...skipping.")
+            self.progress(4, 4)
+            return
 
-    idx = numpy.argmax(numpy.flip(data[:, 1]) > Tthreshold)
-    print(f"  Saving trucated history back to {file}.")
-    numpy.savetxt(file, data[:-idx, :])
+        self.progress(2, 4)
+        idx = numpy.argmax(numpy.flip(data[:, 1]) > Tthreshold)
+        self.progress(3, 4)
+        self.status(f"Saving trucated history back to {file}.")
+        numpy.savetxt(file, data[:-idx, :])
+        self.progress(4, 4)
 
 
 @app.command()
@@ -650,9 +719,10 @@ def truncate_temperature_history_file(
     configs = []
     for file in temperature_history_file:
         configs.append({"file": file, "threshold": threshold})
-    with multiprocessing.Pool() as pool:
-        for r in pool.imap_unordered(truncate_temperature_history_file_job, configs):
-            pass
+
+    controller = parallel_jobs.Controller(TruncateTemperatureProfileProcess)
+    controller.run(configs)
+    controller.stop()
 
 
 @app.command()

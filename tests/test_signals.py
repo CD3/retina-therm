@@ -100,3 +100,40 @@ def test_disconnecting():
     a.emit(6)
     slot_tracker.callback1.assert_called_once_with(5)
     slot_tracker.callback2.assert_called_with(12)
+
+
+def test_forwarding_signals():
+    a = Signal()
+    b = Signal()
+
+    slot_tracker = Mock()
+    slot_tracker.callback = MagicMock()
+
+    def callback(v):
+        slot_tracker.callback(v)
+
+    b.connect(callback)
+    a.connect(b)
+
+    a.emit(1)
+    slot_tracker.callback.assert_called_with(1)
+
+
+def test_errors_in_slots():
+    a = Signal()
+    b = Signal()
+
+    slot_tracker = Mock()
+    slot_tracker.callback = MagicMock()
+
+    def callback(v):
+        # try to call a method that does not exist in the slot
+        slot_tracker.callback_typo(v)
+
+    b.connect(callback)
+    a.connect(b)
+
+    with pytest.raises(AttributeError) as e:
+        a.emit(1)
+
+    assert "no attribute 'callback_typo'" in str(e)

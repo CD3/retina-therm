@@ -87,3 +87,27 @@ def test_regularizing_temperature_history():
     assert Tp[0] == pytest.approx(0)
     assert Tp[20] == pytest.approx(4)
     assert Tp[10] == pytest.approx(2)
+
+
+def test_finding_index_for_time():
+    t = numpy.array([0, 1e-6, 2e-6, 3e-6])
+
+    assert multi_pulse_builder.find_index_for_time(t, -2e-6) is None
+    assert multi_pulse_builder.find_index_for_time(t, -1e-6) is None
+    assert multi_pulse_builder.find_index_for_time(t, 0.0) == 0
+    assert multi_pulse_builder.find_index_for_time(t, 1e-6) == 1
+    assert multi_pulse_builder.find_index_for_time(t, 2e-6) == 2
+    assert multi_pulse_builder.find_index_for_time(t, 3e-6) == 3
+    assert multi_pulse_builder.find_index_for_time(t, 4e-6) is None
+    assert multi_pulse_builder.find_index_for_time(t, 5e-6) is None
+
+    t = numpy.array([0, 0.5e-6, 1e-6, 1.5e-6, 2e-6, 3e-6])
+
+    assert multi_pulse_builder.find_index_for_time(t, -2e-6) is None
+    assert multi_pulse_builder.find_index_for_time(t, -1e-6) is None
+    assert multi_pulse_builder.find_index_for_time(t, 0.0) == 0
+    assert multi_pulse_builder.find_index_for_time(t, 1e-6) == 2
+    assert multi_pulse_builder.find_index_for_time(t, 2e-6) == 4
+    assert multi_pulse_builder.find_index_for_time(t, 3e-6) == 5
+    assert multi_pulse_builder.find_index_for_time(t, 4e-6) is None
+    assert multi_pulse_builder.find_index_for_time(t, 5e-6) is None

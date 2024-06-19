@@ -32,8 +32,14 @@ class JobProcess(multiprocessing.Process):
             if msg == "quit":
                 active = False
             else:
-                self.run_job(msg)
-                self.child_conn.send("finished")
+                try:
+                    self.run_job(msg)
+                    self.child_conn.send("finished")
+                except Exception as e:
+                    self.child_conn_status.send(
+                        f"ERROR: exception thrown while running job: {e}."
+                    )
+                    self.child_conn.send("finished")
 
     def submit_job(self, config):
         self.parent_conn.send(config)
@@ -141,6 +147,10 @@ class ProgressDisplay:
         for tag in self.bars:
             self.bars[tag].close()
 
+    def print(self, text):
+        if "ERROR" in text:
+            tqdm.tqdm.write(text)
+
 
 class Controller:
     """A class for setting up and monitoriing multiple processes to run batch jobs."""
@@ -171,6 +181,7 @@ class Controller:
                     self.display.update_progress("Total") if msg == "finished" else None
                 )
             )
+            p.status.connect(lambda msg: self.display.print(msg))
             p.start()
         self.event_loop = asyncio.get_event_loop()
 

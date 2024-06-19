@@ -40,6 +40,32 @@ def interpolate_temperature_history(t, T, tp):
     return Tp
 
 
+def find_index_for_time(ts: numpy.array, t: float, tol: float = 1e-6) -> int:
+    """
+    Search array of times for a given time t and return its index. Matche does not have to be exact,
+    anything within tol (default to 1 us) will be considered a match.
+    """
+    if t < ts[0]:
+        return None
+    if t > ts[-1]:
+        return None
+    N = len(ts)
+    for i in range(N):
+        diff = abs(ts[i] - t)
+        if diff < tol:
+            # check if there are any other times that are closer to the value we are looking for
+            j = i + 1
+            while j < N - 1:
+                diff2 = abs(ts[j] - t)
+                if diff2 < diff:
+                    diff = diff2
+                    j += 1
+                else:
+                    break
+            return j - 1
+    return None
+
+
 class MultiPulseBuilder:
     def __init__(self):
         self.T0 = 0
@@ -69,11 +95,6 @@ class MultiPulseBuilder:
         self.t = copy.copy(t)
         self.dT = T - self.T0
 
-    def find_index_for_time(self, t: float, tol: float = 1e-10) -> int:
-        for i in range(len(self.t)):
-            if abs(self.t[i] - t) < tol:
-                return i
-
     def add_contribution(self, t: float, scale: float) -> None:
         """Add a contribution to the thermal profile."""
         self.arrival_times.append(t)
@@ -94,16 +115,24 @@ class MultiPulseBuilder:
         T = numpy.zeros([len(t)])
 
         N = len(self.arrival_times)
+        if len(t) < 2:
+            raise RuntimeError("Temperature history only contains 1 point.")
+
+        dt = t[1] - t[0]
         for i in range(N):
             if self.arrival_times[i] > t[-1]:
                 continue
 
-            offset = self.find_index_for_time(self.arrival_times[i])
+            offset = find_index_for_time(t, self.arrival_times[i], dt)
+            if offset is None:
+                raise RuntimeError(
+                    f"Could not find a time point in the single-pulse exposure that was close enough to {self.arrival_times[i]}. This could mean your input data is too low resolution for the pulse duration / pulse period. t = {t}"
+                )
 
             if offset != 0:
                 T[offset:] += self.scales[i] * self.dT[:-offset]
             else:
-                T += self.dT
+                T += self.scales[i] * self.dT
             self.progress.emit(i, N)
 
         T += self.T0
