@@ -18,6 +18,8 @@ from tqdm import tqdm
 import retina_therm
 from retina_therm import greens_functions, multi_pulse_builder, units, utils
 
+import powerconf
+
 from . import config_utils, parallel_jobs, utils
 
 app = typer.Typer()
@@ -571,7 +573,7 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
             n = 0
             while arrival_time.to("s").magnitude < t[-1] and n < N:
                 contributions.append(
-                    {"arrival_time": arrival_time.to("s").magnitude, "scale": 1}
+                    {"arrival_time": arrival_time.to("s").magnitude, "scale": config.get("/scale",1)}
                 )
                 arrival_time += t0
                 n += 1
