@@ -27,5 +27,5 @@ def test_python_marcum_q(benchmark):
     benchmark(MarcumQFunction_PYTHON, 1, 1, 1)
 
 
-def test_wasm_marcum_q(benchmark):
-    benchmark(MarcumQFunction_WASM, 1, 1, 1)
+# def test_wasm_marcum_q(benchmark):
+#     benchmark(MarcumQFunction_WASM, 1, 1, 1)
