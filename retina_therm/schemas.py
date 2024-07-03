@@ -56,7 +56,7 @@ class Laser(BaseModel):
     def check_R_or_D(self) -> "Laser":
         if self.profile != "1d" and self.R is None and self.D_ is None:
             raise ValueError(
-                "One of 'R' or 'D' must be given for '{self.profile}' profile."
+                f"One of 'R' or 'D' must be given for '{self.profile}' profile."
             )
         if self.profile != "1d":
             if self.R:
