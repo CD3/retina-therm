@@ -597,6 +597,7 @@ def multiple_pulse(
     ] = False,
 ):
     configs = powerconf.yaml.powerload(config_file)
+    configs = list(filter(lambda c: '/remove' not in c or not any(c['/remove']), configs))
     configs = powerconf.utils.apply_transform(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
