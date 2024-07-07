@@ -134,15 +134,16 @@ class PulsedRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
     laser: PulsedLaser
 
 
-# class MultiplePulseContribution:
-#     arrival_time: QuantityWithUnit("s")
-#     scale: QuantityWithUnit("dimensionless")
+class MultiplePulseContribution:
+    arrival_time: QuantityWithUnit("s")
+    scale: QuantityWithUnit("dimensionless")
 
 
-# class MultiplePulseCmdConfig(BaseModel):
-#     input_file: pathlib.Path
-#     output_file: pathlib.Path
-#     tau: QuantityWithUnit("s")
-#     T: QuantityWithUnit("s")
-#     t0: QuantityWithUnit("s")
-#     contributions: List[MultiplePulseContribution] = []
+class MultiplePulseCmdConfig(BaseModel):
+    input_file: pathlib.Path
+    output_file: pathlib.Path
+    output_config_file: pathlib.Path
+    tau: QuantityWithUnit("s")
+    N: int
+    t0: QuantityWithUnit("s")
+    # contributions: List[MultiplePulseContribution] = []

@@ -17,7 +17,7 @@ from mpmath import mp
 from tqdm import tqdm
 
 import retina_therm
-from retina_therm import greens_functions, multi_pulse_builder, units, utils
+from retina_therm import greens_functions, multi_pulse_builder, units, utils, schemas
 
 from . import config_utils, parallel_jobs, utils
 
@@ -97,21 +97,8 @@ def compute_evaluation_times(config):
     return t
 
 
-def render_and_setup_output_file(output_filename, ctx):
-    """Generate an output filename using the given context and create any parent directories if needed."""
-    # render filename using context
-    output_filename = output_filename.format(**ctx).replace(" ", "_")
-    output_path = Path(output_filename)
-    # if output file is in a subdirectory, create the directory
-    if output_path.parent != Path():
-        output_path.parent.mkdir(exist_ok=True, parents=True)
-
-    return output_path
-
-
 class RelaxationTimeProcess(parallel_jobs.JobProcess):
     def run_job(self, config):
-
         G = greens_functions.MultiLayerGreensFunction(config.tree)
         threshold = config["relaxation_time/threshold"]
         dt = config.get("simulation/time/dt", "1 us")
@@ -274,7 +261,9 @@ def compute_tissue_properties(config):
 class TemperatureRiseProcess(parallel_jobs.JobProcess):
     def run_job(self, config):
         config_id = powerconf.utils.get_id(config)
-        config = compute_tissue_properties(config)
+        # computing tissue properties in main process now so
+        # we can compute config ID with expanded values
+        # config = compute_tissue_properties(config)
 
         if "laser/profile" not in config:
             config["laser/profile"] = "flattop"
@@ -372,6 +361,7 @@ def temperature_rise(
     configs = powerconf.utils.apply_transform(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
+    configs = list(map(lambda c: compute_tissue_properties(c), configs))
 
     config_ids = list(map(powerconf.utils.get_id, configs))
     if print_ids:
@@ -459,8 +449,26 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
         )
         input_file = Path(config["input_file"])
         data = numpy.loadtxt(config["input_file"])
+        imax = len(data)
+        tmax = units.Q_(data[-1,0], "s")
+        # if tmax is given in the config file, we want to trucate
+        # the input data to include the first time >= tmax
+        # this is an optimization reduces the size of the array we
+        # are working.
+        if '/tmax' in config:
+            tmax = units.Q_( config['/tmax'] )
+            if tmax.to("s").magnitude < data[0,0]:
+                raise RuntimeError(f"/tmax ({tmax}) cannot be less than first time in history ({data[0,0]}).")
+            if tmax.to("s").magnitude < data[-1,0]:
+                while imax > 0 and data[imax-1,0] > tmax.to("s").magnitude:
+                    imax -= 1
+        if imax < len(data):
+            data = data[:imax,:]
+
+
         t = data[:, 0]
         T = data[:, 1]
+
 
         if not multi_pulse_builder.is_uniform_spaced(t):
             tp = multi_pulse_builder.regularize_grid(t)
@@ -493,7 +501,6 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
                         "scale": float(c["scale"]),
                     }
                 )
-        config["/tmax"] = "{:~}".format(units.Q_(t[-1], "s"))
 
         if (
             "/tau" in config
@@ -508,7 +515,7 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
             T = units.Q_(config["/T"])
             N = units.Q_(config["/N"])
             if N < 2:
-                config["/t0"] = config["/tmax"]
+                config["/t0"] = str(tmax)
 
             else:
                 t0 = (T - tau) / (N - 1)
@@ -516,12 +523,8 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
 
         if "/t0" in config:
             t0 = units.Q_(config["/t0"])
-            prf = (1 / t0).to("Hz")
-            config["/prf"] = f"{prf:~}"
-
             if "/N" not in config:
-                tmax = units.Q_(config["/tmax"])
-                N = (tmax * prf).magnitude
+                N = int((tmax / t0).magnitude)
                 config["/N"] = f"{N:.2f}"
 
             N = units.Q_(config["/N"])
@@ -597,6 +600,10 @@ def multiple_pulse(
     configs = powerconf.utils.apply_transform(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
+    # validate configs with pydantic
+    # for config in configs:
+    #     schemas.MultiplePulseCmdConfig(**config.tree)
+        
     config_ids = list(map(powerconf.utils.get_id, configs))
     if print_ids:
         for _id in config_ids:
@@ -699,6 +706,58 @@ def print_config_ids(
     configs = powerconf.utils.apply_transform(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
+    configs = list(map(lambda c: compute_tissue_properties(c), configs))
     config_ids = list(map(powerconf.utils.get_id, configs))
     for _id in config_ids:
         print(_id)
+
+@app.command()
+def config(
+    print_multiple_pulse_example_config: Annotated[bool,typer.Option(help="Print an example configuration file for the multiple-pulse command and exit.")] = False,
+    print_temperature_rise_example_config: Annotated[bool,typer.Option(help="Print an example configuration file for the temperature-rise command and exit.")] = False
+        ):
+    """Various config file related task. i.e. print example config, etc."""
+
+    if print_multiple_pulse_example_config:
+        config = fspathtree()
+        config['/input_file'] = "input/CW/Tvst.txt"
+        config['/output_file'] = "output/MP/{c[tau]}-{c[N]}-Tvst.txt"
+        config['/output_config_file'] = "output/MP/{c[tau]}-{c[N]}-CONFIG.yml"
+        config['/tau'] = "100 us"
+        config['/t0'] = "100 us"
+        config['/N'] = 100
+        print( yaml.dump(config.tree))
+        raise typer.Exit(1)
+
+
+    if print_temperature_rise_example_config:
+        config = fspathtree()
+        config['/thermal/k'] = "0.6306 W/m/K"
+        config['/thermal/rho'] = "992 kg/m^3"
+        config['/thermal/c'] = "4178 J /kg / K"
+        config['/layers/0/name'] = "RPE"
+        config['/layers/0/z0'] = "0 um"
+        config['/layers/0/d'] = "10 um"
+        config['/layers/0/mua'] = "720 1/cm"
+        config['/layers/1/name'] = "Choroid"
+        config['/layers/1/z0'] = "4 um"
+        config['/layers/1/d'] = "20 um"
+        config['/layers/1/mua'] = "140 1/cm"
+        config['/laser/E0'] = "1 W/cm^2"
+        config['/laser/D'] = "100 um"
+        config['/laser/profile'] = "flattop"
+        config['/sensor/z'] = "0 um"
+        config['/sensor/r'] = "0 um"
+        config['/simulation/use_approximations'] = True
+        config['/simulation/temperature_rise/method'] = 'quad'
+        config['/simulation/output_file'] = 'output/CW/{c[/laser/D]}-{c[/sensor/r]}-Tvst.txt'
+        config['/simulation/output_config_file'] = 'output/CW/{c[/laser/D]}-{c[/sensor/r]}-CONFIG.yml'
+        config['/simulation/time/dt'] = "1 us"
+        config['/simulation/time/max'] = "10 ms"
+
+
+
+        print( yaml.dump(config.tree))
+        raise typer.Exit(1)
+
+
