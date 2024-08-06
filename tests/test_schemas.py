@@ -263,3 +263,39 @@ def test_pulsed_retina_exposure_config():
     )
     assert config.laser.pulse_duration.magnitude == pytest.approx(1e-6)
     assert config.laser.pulse_period.magnitude == pytest.approx(10e-6)
+
+
+def test_multiple_pulse_cmd_input():
+
+    MultiplePulseContribution(**{"arrival_time": "0 s", "scale": 1.2})
+
+    input = {
+        "input_file": "",
+        "output_file": "",
+        "output_config_file": "",
+        "t0": "1 s",
+        "N": 20,
+        "scale": 2,
+    }
+
+    MultiplePulseCmdConfig(**input)
+
+    input = {
+        "input_file": "",
+        "output_file": "",
+        "output_config_file": "",
+        "contributions": [{"arrival_time": "0 s", "scale": 1.1}],
+    }
+
+    MultiplePulseCmdConfig(**input)
+
+    with pytest.raises(ValueError) as e:
+        input = {
+            "input_file": "",
+            "output_file": "",
+            "output_config_file": "",
+        }
+
+        MultiplePulseCmdConfig(**input)
+    assert "'t0'" in str(e)
+    assert "'N'" in str(e)

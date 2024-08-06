@@ -134,16 +134,29 @@ class PulsedRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
     laser: PulsedLaser
 
 
-class MultiplePulseContribution:
+class MultiplePulseContribution(BaseModel):
     arrival_time: QuantityWithUnit("s")
-    scale: QuantityWithUnit("dimensionless")
+    scale: float
 
 
 class MultiplePulseCmdConfig(BaseModel):
     input_file: pathlib.Path
     output_file: pathlib.Path
     output_config_file: pathlib.Path
-    tau: QuantityWithUnit("s")
-    N: int
-    t0: QuantityWithUnit("s")
-    # contributions: List[MultiplePulseContribution] = []
+
+    tau: QuantityWithUnit("s") = None
+    t0: QuantityWithUnit("s") = None
+    N: int = None
+
+    contributions: List[MultiplePulseContribution] = []
+
+    # create a model validator that will check t0 and N were given
+    # if 'contributions' field was _not_ given
+    @model_validator(mode="after")
+    def check_pulse_config(self) -> "MultiplePulseCmdConfig":
+        if len(self.contributions) == 0:
+            if self.t0 is None and self.N is None:
+                raise ValueError(
+                    f"Regular pulse configuration parameters, 't0' and 'N', must be given if 'contributions' is not given."
+                )
+        return self
