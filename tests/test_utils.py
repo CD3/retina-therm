@@ -1,11 +1,13 @@
 import pprint
 import pytest
+import pathlib
 import numpy
 
 import retina_therm.config_utils
 import retina_therm.units
 import retina_therm.utils
 
+from .unit_test_utils import working_directory
 
 def test_bisect():
     f = lambda x: 2 * x + 1
@@ -185,4 +187,42 @@ def test_marcum_q_function():
     # plt.plot(x,f3,label="f3")
     # plt.legend(loc="upper right")
     # plt.show()
+
+
+def test_writing_arrays_to_file(tmp_path):
+    with working_directory(tmp_path):
+
+        x = numpy.array([1,2,3])
+        y = numpy.array([3,4,5])
+
+        assert not pathlib.Path('data.txt').exists()
+        retina_therm.utils.write_to_file( "data.txt", numpy.c_[x,y], fmt="txt" )
+        assert pathlib.Path('data.txt').exists()
+
+        data = retina_therm.utils.read_from_file( "data.txt", fmt="txt" )
+
+        assert data[0,0] == 1
+        assert data[1,0] == 2
+        assert data[2,0] == 3
+
+        assert data[0,1] == 3
+        assert data[1,1] == 4
+        assert data[2,1] == 5
+
+
+        assert not pathlib.Path('data.hdf5').exists()
+        retina_therm.utils.write_to_file( "data.hdf5", numpy.c_[x,y], fmt="hdf5" )
+        assert pathlib.Path('data.hdf5').exists()
+
+        data = retina_therm.utils.read_from_file( "data.hdf5", fmt="hdf5" )
+
+        assert data[0,0] == 1
+        assert data[1,0] == 2
+        assert data[2,0] == 3
+
+        assert data[0,1] == 3
+        assert data[1,1] == 4
+        assert data[2,1] == 5
+
+
 

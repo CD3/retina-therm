@@ -319,7 +319,11 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         output_paths["simulation/output_config_file_path"].write_text(
             yaml.dump(config.tree)
         )
-        numpy.savetxt(output_paths["simulation/output_file_path"], numpy.c_[t, T])
+        utils.write_to_file(
+            output_paths["simulation/output_file_path"],
+            numpy.c_[t, T],
+            config.get("simulation/output_format", "txt"),
+        )
         self.status.emit("done.")
 
 
@@ -569,7 +573,10 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
                     path.parent.mkdir(parents=True, exist_ok=True)
 
         output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
-        numpy.savetxt(output_paths["output_file_path"], data)
+        utils.write_to_file(
+            output_paths["output_file_path"], data, config.get("output_format", "txt")
+        )
+        self.status.emit("done.")
 
 
 @app.command()

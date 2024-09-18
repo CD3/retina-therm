@@ -23,6 +23,7 @@ pandas = ">=2.2.2"
 tissue-properties = ">=0.1.3"
 powerconf = ">=0.1.2"
 tqdm = ">=4.66.4"
+h5py = "^3.11.0"
 
 
 [tool.poetry.group.dev.dependencies]
