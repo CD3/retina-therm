@@ -119,6 +119,8 @@ def test_cli_simple_model(simple_config):
         assert result.exit_code == 0
         assert pathlib.Path("100_micrometer-Tvst.txt").exists()
 
+        output = pathlib.Path("output/CW/output-Tvst.txt").read_text()
+
 
 def test_cli_schulmeister_model(base_schulmeister_config):
     runner = CliRunner()
@@ -128,3 +130,17 @@ def test_cli_schulmeister_model(base_schulmeister_config):
         assert result.exit_code == 0
         assert pathlib.Path("output/CW/output-Tvst.txt").exists()
         assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
+
+
+def test_cli_simple_model(simple_config):
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        simple_config["simulation"]["output_format"] = "hdf5"
+        pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
+        result = runner.invoke(app, ["temperature-rise", "input.yml"])
+        assert result.exit_code == 0
+        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
+        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
+
+        with pytest.raises(UnicodeDecodeError):
+            output = pathlib.Path("output/CW/output-Tvst.txt").read_text()
