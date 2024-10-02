@@ -82,29 +82,23 @@ def write_to_file(filepath: pathlib.Path, array: numpy.array, fmt="hdf5"):
         numpy.savetxt(filepath, array)
         return
 
-
     if fmt in ["hdf5"]:
-        f = h5py.File(filepath,'w')
+        f = h5py.File(filepath, "w")
         f.create_dataset("retina-therm", data=array)
         f.close()
         return
 
-
-
-
     raise RuntimeError(f"Unrecognized format '{fmt}'")
 
-def read_from_file(filepath: pathlib.Path, fmt="hdf5"):
 
+def read_from_file(filepath: pathlib.Path, fmt="hdf5"):
     if fmt in ["txt"]:
         return numpy.loadtxt(filepath)
 
     if fmt in ["hdf5"]:
-        f = h5py.File(filepath,'r')
+        f = h5py.File(filepath, "r")
         data = f["retina-therm"][:]
         f.close()
         return data
-
-
 
     raise RuntimeError(f"Unrecognized format '{fmt}'")

@@ -322,7 +322,10 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         utils.write_to_file(
             output_paths["simulation/output_file_path"],
             numpy.c_[t, T],
-            config.get("simulation/output_format", "txt"),
+            config.get(
+                "simulation/output_format",
+                output_paths["simulation/output_file_path"].suffix[1:],
+            ),
         )
         self.status.emit("done.")
 
@@ -453,7 +456,9 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
             "Loading base temperature history for building multiple-pulse history."
         )
         input_file = Path(config["input_file"])
-        data = numpy.loadtxt(config["input_file"])
+        data = utils.read_from_file(
+            input_file, config.get("input_file_format", input_file.suffix[1:])
+        )
         imax = len(data)
         tmax = units.Q_(data[-1, 0], "s")
         # if tmax is given in the config file, we want to trucate
@@ -574,7 +579,11 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
 
         output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
         utils.write_to_file(
-            output_paths["output_file_path"], data, config.get("output_format", "txt")
+            output_paths["output_file_path"],
+            data,
+            config.get(
+                "output_file_format", output_paths["output_file_path"].suffix[1:]
+            ),
         )
         self.status.emit("done.")
 
@@ -648,6 +657,9 @@ class TruncateTemperatureProfileProcess(parallel_jobs.JobProcess):
         self.status(f"Truncating temperature_history in {file}.")
         self.progress(0, 4)
         data = numpy.loadtxt(file)
+        data = utils.read_from_file(
+            file, config.get("file_format", pathlib.Path(file).suffix[1:])
+        )
         self.progress(1, 4)
         threshold = units.Q_(threshold)
         if threshold.check(""):
