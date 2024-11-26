@@ -3,6 +3,8 @@ import importlib.resources
 import itertools
 import math
 import pathlib
+import scipy
+import struct
 
 import h5py
 import numpy
@@ -100,5 +102,77 @@ def read_from_file(filepath: pathlib.Path, fmt="hdf5"):
         data = f["retina-therm"][:]
         f.close()
         return data
+
+    raise RuntimeError(f"Unrecognized format '{fmt}'")
+
+def read_Tvst_from_file_txt(filepath: pathlib.Path):
+    return numpy.loadtxt(filepath)
+
+def read_Tvst_from_file_hdf5(filepath: pathlib.Path):
+    f = h5py.File(filepath, "r")
+    data = f["retina-therm"][:]
+    f.close()
+    return data
+
+def read_Tvst_from_file_rt(filepath: pathlib.Path):
+
+
+    with open(filepath,'rb') as f:
+        f.seek(0,2)
+        fs = f.tell()
+        f.seek(0,0)
+        if fs%8 > 0:
+            raise RuntimeError(f"Invalid or corrupt file. rt binary file should contain a multiple of 8 bytes. {filepath} contains {fs} bytes.")
+        N = int(fs/8 - 1)
+        dt = struct.unpack('d',f.read(8))[0]
+        Tvst = numpy.zeros( (N,2) )
+        Tvst[:,0] = numpy.arange(0,dt*N,dt)
+        Tvst[:,1] =  list(map( lambda item: item[0], struct.iter_unpack('d',f.read(8*N))))
+        # print(Tvst)
+    return Tvst
+
+def read_Tvst_from_file(filepath: pathlib.Path, fmt):
+    if fmt in ["txt"]:
+        return read_Tvst_from_file_txt(filepath)
+
+    if fmt in ["hdf5"]:
+        return read_Tvst_from_file_hdf5(filepath)
+
+    if fmt in ["rt"]:
+        return read_Tvst_from_file_rt(filepath)
+
+    raise RuntimeError(f"Unrecognized format '{fmt}'")
+
+def write_Tvst_to_file_txt(data: numpy.array, filepath: pathlib.Path):
+    numpy.savetxt(filepath, data)
+
+def write_Tvst_to_file_hdf5(data: numpy.array, filepath: pathlib.Path):
+    f = h5py.File(filepath, "w")
+    f.create_dataset("retina-therm", data=data)
+    f.close()
+
+def write_Tvst_to_file_rt(data: numpy.array, filepath: pathlib.Path):
+    # check that dat is uniform
+    # the difference between consecutive times should be the same, to within 1 picosecond
+    diffs = numpy.diff(data[:,0])
+    if sum((diffs - diffs[0]) > 1e-9) > 0:
+        raise RuntimeError("time-temperature history must be uniformly spaced to save to 'rt' binary file.")
+
+    with open(filepath,'wb') as f:
+        f.write(diffs[0])
+        T = copy.copy(data[:,1])
+        f.write(T)
+
+
+
+def write_Tvst_to_file(data: numpy.array, filepath: pathlib.Path, fmt):
+    if fmt in ["txt"]:
+        return write_Tvst_to_file_txt(data, filepath)
+
+    if fmt in ["hdf5"]:
+        return write_Tvst_to_file_hdf5(data, filepath)
+
+    if fmt in ["rt"]:
+        return write_Tvst_to_file_rt(data, filepath)
 
     raise RuntimeError(f"Unrecognized format '{fmt}'")
