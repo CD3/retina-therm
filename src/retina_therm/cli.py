@@ -226,6 +226,7 @@ def impulse_response(
             config["/impulse_response/threshold"] = 0.01
 
     if jobs is None or jobs > 1:
+        jobs = min(multiprocessing.cpu_count(), len(configs_to_run))
         controller = parallel_jobs.Controller(ImpulseResponseProcess, jobs)
         controller.run(configs)
         controller.stop()
@@ -323,7 +324,7 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
             output_paths["simulation/output_file_path"],
             numpy.c_[t, T],
             config.get(
-                "simulation/output_format",
+                "simulation/output_file_format",
                 output_paths["simulation/output_file_path"].suffix[1:],
             ),
         )
@@ -388,6 +389,7 @@ def temperature_rise(
         console.print = lambda *args, **kwargs: None
 
     if jobs is None or jobs > 1:
+        jobs = min(multiprocessing.cpu_count(), len(configs_to_run))
         controller = parallel_jobs.Controller(TemperatureRiseProcess, jobs)
         controller.run(configs_to_run)
         controller.stop()
@@ -631,6 +633,7 @@ def multiple_pulse(
         console.print = lambda *args, **kwargs: None
 
     if jobs is None or jobs > 1:
+        jobs = min(multiprocessing.cpu_count(), len(configs_to_run))
         controller = parallel_jobs.Controller(MultiplePulseProcess, jobs)
         controller.run(configs_to_run)
         controller.stop()
@@ -786,3 +789,33 @@ def config(
 
         print(yaml.dump(config.tree))
         raise typer.Exit(1)
+
+
+@app.command()
+def convert_file(
+    input_file: Path,
+    output_file: Path,
+    input_format: Annotated[
+        str, typer.Option("--input-format", "-f", help="Input file format")
+    ] = None,
+    output_format: Annotated[
+        str, typer.Option("--output-format", "-t", help="Output file format")
+    ] = None,
+    filetype: Annotated[str, typer.Option(help="File type (e.g. Tvst)")] = None,
+):
+    if not input_file.exists():
+        print(f"ERROR: {input_file} does not exists.")
+        raise typer.Exit(1)
+
+    formats = ["txt", "hd5", "rt"]
+
+    if input_format is None:
+        input_format = input_file.suffix[1:]
+
+    if output_format is None:
+        output_format = output_file.suffix[1:]
+
+    print(f"{input_file}({input_format}) -> {output_file}({output_format})")
+
+    data = utils.read_Tvst_from_file(input_file, input_format)
+    data = utils.write_Tvst_to_file(data, output_file, output_format)
