@@ -50,9 +50,9 @@ def main(ctx: typer.Context):
 
 def compute_evaluation_times(config):
     # if times are given in the config, just them
-    if "simulation/time/ts" in config:
+    if "ts" in config:
         t = numpy.array(
-            [units.Q_(time).to("s").magnitude for time in config["simulation/time/ts"]]
+            [units.Q_(time).to("s").magnitude for time in config["ts"]]
         )
     else:
         # we want to support specifying the times as a single range,
@@ -61,15 +61,15 @@ def compute_evaluation_times(config):
         # i.e. "from tmin_1 to tmax_1 by steps of dt_1 AND from tmin_2 to tmax_2 by steps of dt_2"
         # this is usefull for sampling the start of a long exposure at higher resolution than the end.
         time_configs = []
-        if type(config["simulation/time"].tree) == dict:
-            time_configs.append(config["simulation/time"])
+        if type(config.tree) == dict:
+            time_configs.append(config)
         else:
-            for c in config["simulation/time"]:
+            for c in config:
                 time_configs.append(c)
 
         time_arrays = []
         for i, time_config in enumerate(time_configs):
-            dt = units.Q_(time_config.get("dt", "1 us"))
+            dt = units.Q_(time_config.get("resolution", "1 us"))
             # if tmin is given, use it
             # if it is not given and this is the first config, use 0 s
             # if it is not given and this is not the first config, use the last config's tmax plus our dt
@@ -263,31 +263,17 @@ def compute_tissue_properties(config):
 class TemperatureRiseProcess(parallel_jobs.JobProcess):
     def run_job(self, config):
         config_id = powerconf.utils.get_id(config)
-        # computing tissue properties in main process now so
-        # we can compute config ID with expanded values
-        # config = compute_tissue_properties(config)
-
-        if "laser/profile" not in config:
-            config["laser/profile"] = "flattop"
-        if "simulation/with_units" not in config:
-            config["simulation/with_units"] = False
-        if "simulation/use_approximations" not in config:
-            config["simulation/with_approximations"] = False
-        if "simulation/use_multi_precision" not in config:
-            config["simulation/with_multi_precision"] = False
-
-        if "laser/pulse_duration" not in config:
-            G = greens_functions.CWRetinaLaserExposure(config.tree)
-        else:
-            G = greens_functions.PulsedRetinaLaserExposure(config.tree)
-        z = config.get("sensor/z", "0 um")
+        # Greens function classes expect simulation config params to be in /simulation
+        config["/simulation"] = config["/temperature_rise"].tree
+        G = greens_functions.CWRetinaLaserExposure(config.tree)
+        z = config["/temperature_rise/sensor/z"]
         z = units.Q_(z).to("cm").magnitude
-        r = config.get("sensor/r", "0 um")
+        r = config["/temperature_rise/sensor/r"]
         r = units.Q_(r).to("cm").magnitude
 
         # if times are given in the config, just them
-        t = compute_evaluation_times(config)
-        method = config.get("simulation/temperature_rise/method", "quad")
+        t = compute_evaluation_times(config['temperature_rise/time'])
+        method = config.get("/temperature_rise/method", "quad")
         if method not in temperature_rise_integration_methods + ["undefined"]:
             raise RuntimeError(f"Unrecognized integration method '{method}'")
 
@@ -296,36 +282,26 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         T = G.temperature_rise(z, r, t, method=method)
         self.status.emit("done.")
         self.status.emit("Writing output files...")
-        ctx = {
-            "config_id": config_id,
-            "c": config,
-        }
 
         output_paths = {}
-        for k in ["simulation/output_file", "simulation/output_config_file"]:
+        for k in ["temperature_rise/output_file", "temperature_rise/output_config_file"]:
             filename = config.get(k, None)
             output_paths[k + "_path"] = Path("/dev/stdout")
             if filename is not None:
-                try:
-                    filename = filename.format(**ctx).replace(" ", "_")
-                except:
-                    raise RuntimeError(
-                        f"There was an error trying to generate output filename from template '{filename}'."
-                    )
                 path = Path(filename)
                 output_paths[k + "_path"] = path
                 if path.parent != Path():
                     path.parent.mkdir(parents=True, exist_ok=True)
 
-        output_paths["simulation/output_config_file_path"].write_text(
+        output_paths["temperature_rise/output_config_file_path"].write_text(
             yaml.dump(config.tree)
         )
         utils.write_to_file(
-            output_paths["simulation/output_file_path"],
+            output_paths["temperature_rise/output_file_path"],
             numpy.c_[t, T],
             config.get(
-                "simulation/output_file_format",
-                output_paths["simulation/output_file_path"].suffix[1:],
+                "temperature_rise/output_file_format",
+                output_paths["temperature_rise/output_file_path"].suffix[1:],
             ),
         )
         self.status.emit("done.")
@@ -334,33 +310,18 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
 class SensorConfig(config.BaseModel):
     z: config.QuantityWithUnit("cm")
     r: config.QuantityWithUnit("cm")
-
 class TimeConfig(config.BaseModel):
     max: config.QuantityWithUnit("s")
     resolution: config.QuantityWithUnit("s")
-class SimulationConfig(config.BaseModel):
+class TemperatureRiseConfig(config.BaseModel):
     output_file: str
     sensor: SensorConfig
     time: TimeConfig
-class LaserConfig(config.BaseModel):
-    wavelength: config.QuantityWithUnit("nm")
-    duration: config.QuantityWithUnit("s")
-    irradiance: config.QuantityWithUnit("W/cm/cm")
-    one_over_e_radius: config.QuantityWithUnit("cm")
-class LayerConfig(config.BaseModel):
-    absorption_coefficient: config.QuantityWithUnit("1/cm",alias="mua")
-    thickness: config.QuantityWithUnit("cm",alias="d")
-    position: config.QuantityWithUnit("cm",alias="z0")
-class ThermalConfig(config.BaseModel):
-    thermal_conductivity: config.QuantityWithUnit("J/K/s/cm",alias="k")
-    density: config.QuantityWithUnit("g/cm**3",alias="rho")
-    specific_heat: config.QuantityWithUnit("J/K/g", alias="c")
-
 class TemperatureRiseCmdConfig(config.BaseModel):
-    simulation: SimulationConfig
-    laser: LaserConfig
-    layers: list[LayerConfig]
-    thermal: ThermalConfig
+    temperature_rise: TemperatureRiseConfig
+    laser: config.LaserConfig
+    layers: list[config.LayerConfig]
+    thermal: config.ThermalPropertiesConfig
 
 
 
@@ -404,9 +365,10 @@ def temperature_rise(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
     configs = list(map(lambda c: compute_tissue_properties(c), configs))
+
+    # validate configs
     for config in configs:
         config = TemperatureRiseCmdConfig(**config.tree)
-        print(config)
 
     config_ids = list(map(powerconf.utils.get_id, configs))
     if print_ids:
@@ -782,6 +744,8 @@ def config(
     ] = False,
 ):
     """Various config file related task. i.e. print example config, etc."""
+    print("Under Developement")
+    return
 
     if print_multiple_pulse_example_config:
         config = fspathtree()
@@ -812,16 +776,16 @@ def config(
         config["/laser/profile"] = "flattop"
         config["/sensor/z"] = "0 um"
         config["/sensor/r"] = "0 um"
-        config["/simulation/use_approximations"] = True
-        config["/simulation/temperature_rise/method"] = "quad"
-        config["/simulation/output_file"] = (
+        config["/temperature_rise/use_approximations"] = True
+        config["/temperature_rise/temperature_rise/method"] = "quad"
+        config["/temperature_rise/output_file"] = (
             "output/CW/{c[/laser/D]}-{c[/sensor/r]}-Tvst.txt"
         )
-        config["/simulation/output_config_file"] = (
+        config["/temperature_rise/output_config_file"] = (
             "output/CW/{c[/laser/D]}-{c[/sensor/r]}-CONFIG.yml"
         )
-        config["/simulation/time/dt"] = "1 us"
-        config["/simulation/time/max"] = "10 ms"
+        config["/temperature_rise/time/dt"] = "1 us"
+        config["/temperature_rise/time/max"] = "10 ms"
 
         print(yaml.dump(config.tree))
         raise typer.Exit(1)

@@ -23,7 +23,7 @@ laser:
   irradiance: 1 cal/s/cm^2
   one_over_e_radius: 10 um
 
-simulation:
+temperature_rise:
   sensor:
     z: 1 um
     r: 0 um
@@ -31,4 +31,7 @@ simulation:
     max: 100 ms
     resolution: 100 us
     dt: 100 us
-  output_file : simple-output/Tvst-{c[laser/R]}.txt
+  output_file : simple-output/Tvst-$(${/laser/one_over_e_radius}).txt
+
+multiple_pulse:
+  N = 1

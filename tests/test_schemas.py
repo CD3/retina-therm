@@ -9,11 +9,11 @@ from retina_therm.units import *
 def test_layer_schema():
     config = {"d": "1 um", "z0": "10 um", "mua": "310 1/cm"}
 
-    layer = Layer(**config)
+    layer = LayerConfig(**config)
 
-    assert layer.d.magnitude == pytest.approx(1e-4)
-    assert layer.z0.magnitude == pytest.approx(0.001)
-    assert layer.mua.magnitude == pytest.approx(310)
+    assert layer.thickness.magnitude == pytest.approx(1e-4)
+    assert layer.position.magnitude == pytest.approx(0.001)
+    assert layer.absorption_coeffcient.magnitude == pytest.approx(310)
 
     # print(layer.model_dump())
 
@@ -30,7 +30,7 @@ E0: 1 mW/cm^2
 """
 
     config = LargeBeamAbsorbingLayerGreensFunctionConfig(**yaml.safe_load(config_text))
-    assert config.E0.magnitude == 0.001
+    assert config.irradiance.magnitude == 0.001
     # print(config.model_dump())
 
 
@@ -41,69 +41,71 @@ rho: 1 kg/m^3
 c: 1 cal / g / K
 k: 2 W/cm/K
 d: 10 um
-z0: 0 um
+z0: 1 um
 E0: 1 mW/cm^2
-R: 3 mm
+one_over_e_radius: 3 mm
 """
 
     config = FlatTopBeamAbsorbingLayerGreensFunctionConfig(
         **yaml.safe_load(config_text)
     )
-    # print(config.model_dump())
-    assert config.R.magnitude == pytest.approx(0.3)
+    assert config.irradiance.magnitude == pytest.approx(0.001)
+    assert config.position.magnitude == pytest.approx(1e-4)
+    assert config.thickness.magnitude == pytest.approx(10e-4)
+    assert config.one_over_e_radius.magnitude == pytest.approx(0.3)
 
 
 def test_GaussianBeamAbsorbingLayerGreensFunctionConfig():
     config_text = """
-mua: 10 1/mm
-rho: 1 kg/m^3
-c: 1 cal / g / K
-k: 2 W/cm/K
-d: 10 um
-z0: 0 um
-E0: 1 mW/cm^2
-R: 3 mm
-"""
+    mua: 10 1/mm
+    rho: 1 kg/m^3
+    c: 1 cal / g / K
+    k: 2 W/cm/K
+    d: 10 um
+    z0: 0 um
+    E0: 1 mW/cm^2
+    one_over_e_radius: 3 mm
+    """
 
     config = GaussianBeamAbsorbingLayerGreensFunctionConfig(
         **yaml.safe_load(config_text)
     )
     # print(config.model_dump())
-    assert config.R.magnitude == pytest.approx(0.3)
+    assert config.one_over_e_radius.magnitude == pytest.approx(0.3)
 
 
 def test_MultiLayerGreensFunctionConfig():
-    laser_config = Laser(**{"profile": "gaussian", "R": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(**{"profile": "gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
     assert laser_config.profile == "gaussian"
 
-    laser_config = Laser(**{"profile": "flattop", "R": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(**{"profile": "flattop", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
     assert laser_config.profile == "flattop"
 
-    laser_config = Laser(**{"profile": "Gaussian", "R": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(**{"profile": "Gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
     assert laser_config.profile == "gaussian"
 
-    laser_config = Laser(**{"profile": "Flat Top", "R": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(**{"profile": "Flat Top", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
     assert laser_config.profile == "flattop"
 
     with pytest.raises(Exception):
-        laser_config = Laser(**{"profile": "annular", "R": "1 cm", "E0": "1 W/cm^2"})
+        laser_config = LaserConfig(**{"profile": "annular", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
 
-    thermal_config = ThermalProperties(
+    thermal_config = ThermalPropertiesConfig(
         **{"rho": "1 g/cm**3", "c": "1 cal/g/K", "k": "1 W/cm/K"}
     )
     assert thermal_config.rho.magnitude == pytest.approx(1)
     assert thermal_config.c.magnitude == pytest.approx(4.184)
     assert thermal_config.k.magnitude == pytest.approx(1)
 
-    layer_config = Layer(**{"d": "100 um", "z0": "10 um", "mua": "300 1/cm"})
-    assert layer_config.d.magnitude == pytest.approx(100e-4)
-    assert layer_config.z0.magnitude == pytest.approx(10e-4)
-    assert layer_config.mua.magnitude == pytest.approx(300)
+    layer_config = LayerConfig(**{"d": "100 um", "z0": "10 um", "mua": "300 1/cm"})
+    assert layer_config.thickness.magnitude == pytest.approx(100e-4)
+    assert layer_config.position.magnitude == pytest.approx(10e-4)
+    assert layer_config.absorption_coeffcient.magnitude == pytest.approx(300)
 
     config = MultiLayerGreensFunctionConfig(
         **{
             "simulation": {},
-            "laser": {"profile": "Flat Top", "R": "10 um", "E0": "1 W/cm^2"},
+            "laser": {"profile": "Flat Top", "one_over_e_radius": "10 um", "E0": "1 W/cm^2"},
             "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
             "layers": [
                 {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
@@ -114,20 +116,15 @@ def test_MultiLayerGreensFunctionConfig():
 
     assert config.laser.profile == "flattop"
     assert config.thermal.rho.magnitude == pytest.approx(1)
-    assert config.layers[0].d.magnitude == pytest.approx(10e-4)
+    assert config.layers[0].thickness.magnitude == pytest.approx(10e-4)
 
 
 def test_LaserSchema():
-    laser_config = Laser(**{"profile": "gaussian", "R": "1 cm", "E0": "1 W/cm^2"})
-    assert laser_config.D.magnitude == pytest.approx(2)
-    laser_config.D = Q_(1, "cm")
-    assert laser_config.R.magnitude == pytest.approx(0.5)
-
-    laser_config = Laser(**{"profile": "gaussian", "D": "1 cm", "E0": "1 W/cm^2"})
-    assert laser_config.R.magnitude == pytest.approx(0.5)
+    laser_config = LaserConfig(**{"profile": "gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
+    assert laser_config.one_over_e_radius.magnitude == pytest.approx(1)
 
     with pytest.raises(Exception):
-        laser_config = Laser(**{"profile": "gaussian", "q": "1 cm"})
+        laser_config = LaserConfig(**{"profile": "gaussian", "q": "1 cm"})
 
 
 def test_converting_models():
@@ -139,7 +136,7 @@ k: 2 W/cm/K
 d: 10 um
 z0: 0 um
 E0: 1 mW/cm^2
-R: 3 mm
+one_over_e_radius: 3 mm
 """
     config = GaussianBeamAbsorbingLayerGreensFunctionConfig(
         **yaml.safe_load(config_text)
@@ -147,9 +144,9 @@ R: 3 mm
     config2 = FlatTopBeamAbsorbingLayerGreensFunctionConfig(**config.model_dump())
     config3 = LargeBeamAbsorbingLayerGreensFunctionConfig(**config2.model_dump())
 
-    assert config.R == config2.R
+    assert config.one_over_e_radius == config2.one_over_e_radius
     with pytest.raises(AttributeError):
-        tmp = config3.R
+        tmp = config3.one_over_e_radius
 
 
 def test_unit_conversions():
@@ -161,14 +158,14 @@ k: 2 W/cm/K
 d: 10 um
 z0: 0 um
 E0: 1 mW/cm^2
-R: 3 mm
+one_over_e_radius: 3 mm
 """
     config = GaussianBeamAbsorbingLayerGreensFunctionConfig(
         **yaml.safe_load(config_text)
     )
 
-    assert config.mua.magnitude == pytest.approx(100)
-    assert config.mua.units == Q_("1 1/cm").units
+    assert config.absorption_coeffcient.magnitude == pytest.approx(100)
+    assert config.absorption_coeffcient.units == Q_("1 1/cm").units
 
     assert config.rho.magnitude == pytest.approx(
         Q_(1, "kg/m^3").to("g/cm/cm/cm").magnitude
@@ -181,44 +178,44 @@ R: 3 mm
     assert config.k.magnitude == pytest.approx(2)
     assert config.k.units == Q_("1 W/cm/K").units
 
-    assert config.d.magnitude == pytest.approx(10e-4)
-    assert config.d.units == Q_("1 cm").units
+    assert config.thickness.magnitude == pytest.approx(10e-4)
+    assert config.thickness.units == Q_("1 cm").units
 
-    assert config.z0.magnitude == pytest.approx(0)
-    assert config.z0.units == Q_("1 cm").units
+    assert config.position.magnitude == pytest.approx(0)
+    assert config.position.units == Q_("1 cm").units
 
-    assert config.E0.magnitude == pytest.approx(0.001)
-    assert config.E0.units == Q_("1 W/cm/cm").units
+    assert config.irradiance.magnitude == pytest.approx(0.001)
+    assert config.irradiance.units == Q_("1 W/cm/cm").units
 
-    assert config.R.magnitude == pytest.approx(0.3)
-    assert config.R.units == Q_("1 cm").units
+    assert config.one_over_e_radius.magnitude == pytest.approx(0.3)
+    assert config.one_over_e_radius.units == Q_("1 cm").units
 
 
 def test_beam_radius_required_if_not_1d():
     with pytest.raises(pydantic.ValidationError):
-        config = Laser(**{"E0": 1})
+        config = LaserConfig(**{"E0": 1})
     with pytest.raises(pint.DimensionalityError):
-        config = Laser(**{"E0": "1"})
+        config = LaserConfig(**{"E0": "1"})
 
     with pytest.raises(pydantic.ValidationError):
-        config = Laser(**{"E0": "1 W/cm/cm"})
+        config = LaserConfig(**{"E0": "1 W/cm/cm"})
 
-    config = Laser(**{"E0": "1 W/cm/cm", "R": "1 cm"})
+    config = LaserConfig(**{"E0": "1 W/cm/cm", "one_over_e_radius": "1 cm"})
 
     assert config.profile == "flattop"
-    assert config.R.magnitude == pytest.approx(1)
+    assert config.one_over_e_radius.magnitude == pytest.approx(1)
 
-    config = Laser(**{"E0": "1 W/cm/cm", "profile": "1d"})
+    config = LaserConfig(**{"E0": "1 W/cm/cm", "profile": "1d"})
 
     assert config.profile == "1d"
-    assert config.R == None
+    assert config.one_over_e_radius == None
 
 
 def test_cw_retina_exposure_config():
     config = CWRetinaLaserExposureConfig(
         **{
             "simulation": {},
-            "laser": {"profile": "Flat Top", "R": "10 um", "E0": "1 W/cm^2"},
+            "laser": {"profile": "Flat Top", "one_over_e_radius": "10 um", "E0": "1 W/cm^2"},
             "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
             "layers": [
                 {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
@@ -234,7 +231,7 @@ def test_cw_retina_exposure_config():
 def test_pulsed_retina_exposure_config():
     config_dict = {
         "simulation": {},
-        "laser": {"profile": "Flat Top", "R": "10 um", "E0": "1 W/cm^2"},
+        "laser": {"profile": "Flat Top", "one_over_e_radius": "10 um", "E0": "1 W/cm^2"},
         "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
         "layers": [
             {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},

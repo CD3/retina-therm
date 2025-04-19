@@ -20,12 +20,12 @@ class LargeBeamAbsorbingLayerGreensFunction:
             config = LargeBeamAbsorbingLayerGreensFunctionConfig(**config)
 
         self.mua = config.absorption_coeffcient
-        self.k = config.thermal_conductivity
-        self.rho = config.density
+        self.k = config.k
+        self.rho = config.rho
         self.c = config.c
-        self.E0 = config.E0
-        self.d = config.d
-        self.z0 = config.z0
+        self.E0 = config.irradiance
+        self.d = config.thickness
+        self.z0 = config.position
         self.alpha = self.k / self.rho / self.c
 
         self.with_units = config.with_units
@@ -176,7 +176,7 @@ class FlatTopBeamAbsorbingLayerGreensFunction(LargeBeamAbsorbingLayerGreensFunct
             config = FlatTopBeamAbsorbingLayerGreensFunctionConfig(**config)
         super().__init__(config.model_dump())
 
-        self.R = config.R
+        self.R = config.one_over_e_radius
 
         if not self.with_units:
             for param in ["R"]:
@@ -269,8 +269,8 @@ class MultiLayerGreensFunction:
 
         self.layers = []
 
-        E0 = config.laser.E0
-        for layer in sorted(config.layers, key=lambda l: l.z0.magnitude):
+        E0 = config.laser.irradiance
+        for layer in sorted(config.layers, key=lambda l: l.position.magnitude):
             # create a config dict that we will pass to the layer
             # and fill in the keys needed by a layer
             # thank you pydantic...
@@ -281,7 +281,10 @@ class MultiLayerGreensFunction:
             # override irradiance
             layer_config.update(
                 {
-                    "E0": str(E0),
+                    # make sure we use "irradiance" here.
+                    # "E0" is an alias, but if both are given "irradiance" will be used,
+                    # and "irradiance" is already in the dict.
+                    "irradiance": str(E0),
                 }
             )
 
@@ -295,8 +298,8 @@ class MultiLayerGreensFunction:
             self.layers.append(G)
 
             # Need to reduce the incident irradiance according to Beer's Law
-            mua = layer.mua
-            d = layer.d
+            mua = layer.absorption_coeffcient
+            d = layer.thickness
 
             if not self.with_units:
                 mua = mua.magnitude
@@ -312,7 +315,7 @@ class MultiLayerGreensFunction:
             if i > 0:
                 if self.layers[i].z0 < self.layers[i - 1].z0 + self.layers[i - 1].d:
                     raise RuntimeError(
-                        f"ERROR: Layer {i} overlaps with layer {i-1}. z_{i} = {self.layers[i].z0}, z_{i-1} + d_{i-1} = {self.layers[i-1].z0 + self.layers[i-1].d}"
+                        f"ERROR: Layer {i} overlaps with layer {i-1}. z_{i} = {self.layers[i].z0}, z_{i-1} + d_{i-1} = {self.layers[i-1].z0+ self.layers[i-1].d}"
                     )
 
     def __call__(

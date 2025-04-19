@@ -7,5 +7,5 @@ test:
   nox
 
 pytest *args:
-  cd tests && rye run pytest -s "$@"
+  cd tests && uv run pytest -s {{args}}
 

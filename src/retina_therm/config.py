@@ -9,89 +9,66 @@ from typing import Annotated, Any, List, Literal, TypeVar, Union
 import numpy
 from pydantic import (AfterValidator, BaseModel, BeforeValidator, Field,
                       GetCoreSchemaHandler, PlainSerializer, WithJsonSchema,
-                      model_validator)
+                      model_validator, AliasChoices)
 from pydantic_core import CoreSchema, core_schema
 
 from .units import Q_
 
-QuantityWithUnit = lambda U,alias=None,desc=None: Annotated[
+QuantityWithUnit = lambda U,names=None,desc=None: Annotated[
     str,
     AfterValidator(lambda x: Q_(x).to(U)),
     PlainSerializer(lambda x: f"{x:~}" if x is not None else "null", return_type=str),
     WithJsonSchema({"type": "string"}, mode="serialization"),
-    Field(validation_alias=alias, description=desc)
+    Field(alias=AliasChoices(*names if type(names) is list else names) if names is not None else None, description=desc)
 ]
 
 
 class LayerConfig(BaseModel):
-    d: QuantityWithUnit("cm")
-    z0: QuantityWithUnit("cm") = None
-    mua: QuantityWithUnit("1/cm")
+    thickness: QuantityWithUnit("cm",names=["thickness","d"])
+    position: QuantityWithUnit("cm",names=["position","z0"])
+    absorption_coeffcient: QuantityWithUnit("1/cm", names=["absorption_coeffcient","mua"])
 
 
-class Laser(BaseModel):
+class LaserConfig(BaseModel):
     profile: Annotated[
         Literal["gaussian"] | Literal["flattop"] | Literal["1d"],
         BeforeValidator(lambda x: x.lower().replace(" ", "")),
     ] = "flattop"
-    R: Union[QuantityWithUnit("cm"), None] = Field(default=None)
-    E0: QuantityWithUnit("W/cm^2")
+    one_over_e_radius: Union[QuantityWithUnit("cm")|None] = Field(default=None)
+    irradiance: QuantityWithUnit("W/cm^2",names=["irradiance","E0"])
 
-    # allow user to specify diameter D instead of radius R
-    # create a field named "D_"" that will be used internally.
-    # user will pass "D"
-    D_: QuantityWithUnit("cm") = Field(alias="D", default=None)
-
-    # create property named "D" that the user can use if they want.
-    @property
-    def D(self):
-        return self.R * 2
-
-    @D.setter
-    def D(self, val):
-        self.R = val / 2
-
-    # create a model validator that will check that one of "R" or "D"
-    # were passed in and set the other.
+    # create a model validator that will check that one_over_e_radius is
+    # given if profile is not 1D
     @model_validator(mode="after")
-    def check_R_or_D(self) -> "Laser":
-        if self.profile != "1d" and self.R is None and self.D_ is None:
+    def check_R(self) -> "LaserConfig":
+        if self.profile != "1d" and self.one_over_e_radius is None:
             raise ValueError(
-                f"One of 'R' or 'D' must be given for '{self.profile}' profile."
+                f"'one_over_e_radius' must be given for '{self.profile}' profile."
             )
-        if self.profile != "1d":
-            if self.R:
-                self.D_ = self.R * 2
-            else:
-                self.R = self.D_ / 2
-
         return self
 
 
-class CWLaser(Laser):
+class CWLaserConfig(LaserConfig):
     start: QuantityWithUnit("s") = Field(default="0 s", validate_default=True)
     duration: QuantityWithUnit("s") = Field(default="1 year", validate_default=True)
 
 
-class PulsedLaser(CWLaser):
+class PulsedLaserConfig(CWLaserConfig):
     pulse_duration: QuantityWithUnit("s")
     pulse_period: QuantityWithUnit("s") = Field(default="1 year", validate_default=True)
 
 
-class ThermalProperties(BaseModel):
+class ThermalPropertiesConfig(BaseModel):
     rho: QuantityWithUnit("g/cm^3")
     c: QuantityWithUnit("J/g/K")
     k: QuantityWithUnit("W/cm/K")
 
 
-class LargeBeamAbsorbingLayerGreensFunctionConfig(BaseModel):
-    mua: QuantityWithUnit("1/cm")
+class LargeBeamAbsorbingLayerGreensFunctionConfig(LayerConfig):
     rho: QuantityWithUnit("g/cm^3")
     c: QuantityWithUnit("J/g/K")
     k: QuantityWithUnit("W/cm/K")
-    d: QuantityWithUnit("cm")
-    z0: QuantityWithUnit("cm")
-    E0: QuantityWithUnit("W/cm^2")
+    irradiance: QuantityWithUnit("W/cm^2",names=["irradiance","E0"])
 
     with_units: bool = False
     use_multi_precision: bool = False
@@ -101,7 +78,7 @@ class LargeBeamAbsorbingLayerGreensFunctionConfig(BaseModel):
 class FlatTopBeamAbsorbingLayerGreensFunctionConfig(
     LargeBeamAbsorbingLayerGreensFunctionConfig
 ):
-    R: QuantityWithUnit("cm")
+    one_over_e_radius: QuantityWithUnit("cm")
 
 
 class GaussianBeamAbsorbingLayerGreensFunctionConfig(
@@ -117,22 +94,22 @@ class PrecisionConfig(BaseModel):
 
 
 class MultiLayerGreensFunctionConfig(BaseModel):
-    laser: Laser
-    thermal: ThermalProperties
+    laser: LaserConfig
+    thermal: ThermalPropertiesConfig
     layers: List[LayerConfig]
 
-    class Simulation(PrecisionConfig):
+    class SimulationConfig(PrecisionConfig):
         pass
 
-    simulation: Simulation
+    simulation: SimulationConfig
 
 
 class CWRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
-    laser: CWLaser
+    laser: CWLaserConfig
 
 
 class PulsedRetinaLaserExposureConfig(MultiLayerGreensFunctionConfig):
-    laser: PulsedLaser
+    laser: PulsedLaserConfig
 
 
 class MultiplePulseContribution(BaseModel):

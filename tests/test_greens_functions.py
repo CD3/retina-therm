@@ -188,7 +188,7 @@ def test_flat_top_beam_call_function():
             "E0": "1 W/cm^2",
             "d": "1 cm",
             "z0": "0 cm",
-            "R": "1 cm",
+            "one_over_e_radius": "1 cm",
             "with_units": True,
             "use_approximations": False,
         }
@@ -213,7 +213,7 @@ def test_multi_layer_greens_function_errors():
             {
                 "laser": {
                     "E0": "1 W/cm^2",
-                    "R": "1 cm",
+                    "one_over_e_radius": "1 cm",
                 },
                 "thermal": {
                     "k": "1 W/cm/K",
@@ -284,7 +284,7 @@ def test_multi_layer_greens_function_calcs():
     one_layer_config = {
         "laser": {
             "E0": "1 W/cm^2",
-            "R": "1 cm",
+            "one_over_e_radius": "1 cm",
         },
         "thermal": {
             "k": "1 W/cm/K",
@@ -338,7 +338,7 @@ def test_discontinuity_bug():
     one_layer_config = {
         "laser": {
             "E0": "1 W/cm^2",
-            "R": "1 cm",
+            "one_over_e_radius": "1 cm",
         },
         "thermal": {
             "k": "1 W/cm/K",

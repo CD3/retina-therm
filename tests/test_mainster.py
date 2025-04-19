@@ -142,7 +142,7 @@ def test_compare_to_mainter_temperature_rises_calculations_for_flattop_profile()
                 "pulse_duration": "1000 s",
                 "E0": str(E0),
                 "profile": "flattop",
-                "R": str(units.Q_(size)),
+                "one_over_e_radius": str(units.Q_(size)),
             },
             "thermal": {
                 "rho": "1 g/cm^3",

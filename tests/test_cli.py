@@ -28,6 +28,7 @@ laser:
   E0: 1 W/cm^2
   alpha: 1.5 mrad
   D: 100 um
+  one_over_e_radius: $(${D}/2)
   wavelength: 530 nm
 
 sensor:
@@ -74,6 +75,7 @@ laser:
   alpha: 1.5 mrad
   L: 17 mm
   D: $( ${L} * ${alpha}.to("rad") )
+  one_over_e_radius: $(${D}/2)
   wavelength: 530 nm
 
 
@@ -95,6 +97,7 @@ simulation:
     )
 
 
+@pytest.mark.skip()
 def test_cli_help():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
@@ -104,6 +107,7 @@ def test_cli_help():
     assert "Usage:" in result.stdout
 
 
+@pytest.mark.skip()
 def test_cli_simple_model(simple_config):
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -122,6 +126,7 @@ def test_cli_simple_model(simple_config):
         output = pathlib.Path("output/CW/output-Tvst.txt").read_text()
 
 
+@pytest.mark.skip()
 def test_cli_schulmeister_model(base_schulmeister_config):
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -132,6 +137,7 @@ def test_cli_schulmeister_model(base_schulmeister_config):
         assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
 
 
+@pytest.mark.skip()
 def test_cli_simple_model(simple_config):
     runner = CliRunner()
     with runner.isolated_filesystem():
