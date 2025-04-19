@@ -17,10 +17,10 @@ from mpmath import mp
 from tqdm import tqdm
 
 import retina_therm
-from retina_therm import (greens_functions, multi_pulse_builder, schemas,
+from retina_therm import (greens_functions, multi_pulse_builder, config,
                           units, utils)
 
-from . import config_utils, parallel_jobs, utils
+from . import parallel_jobs, utils
 
 app = typer.Typer()
 console = rich.console.Console()
@@ -256,7 +256,7 @@ def compute_tissue_properties(config):
             mua = eval(
                 layer["mua"].format(wavelength="'" + config["/laser/wavelength"] + "'")
             )
-            layer["mua"] = str(mua)  # schema validators expect strings for quantities
+            layer["mua"] = str(mua)  # config validators expect strings for quantities
     return config
 
 
@@ -331,6 +331,39 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         self.status.emit("done.")
 
 
+class SensorConfig(config.BaseModel):
+    z: config.QuantityWithUnit("cm")
+    r: config.QuantityWithUnit("cm")
+
+class TimeConfig(config.BaseModel):
+    max: config.QuantityWithUnit("s")
+    resolution: config.QuantityWithUnit("s")
+class SimulationConfig(config.BaseModel):
+    output_file: str
+    sensor: SensorConfig
+    time: TimeConfig
+class LaserConfig(config.BaseModel):
+    wavelength: config.QuantityWithUnit("nm")
+    duration: config.QuantityWithUnit("s")
+    irradiance: config.QuantityWithUnit("W/cm/cm")
+    one_over_e_radius: config.QuantityWithUnit("cm")
+class LayerConfig(config.BaseModel):
+    absorption_coefficient: config.QuantityWithUnit("1/cm",alias="mua")
+    thickness: config.QuantityWithUnit("cm",alias="d")
+    position: config.QuantityWithUnit("cm",alias="z0")
+class ThermalConfig(config.BaseModel):
+    thermal_conductivity: config.QuantityWithUnit("J/K/s/cm",alias="k")
+    density: config.QuantityWithUnit("g/cm**3",alias="rho")
+    specific_heat: config.QuantityWithUnit("J/K/g", alias="c")
+
+class TemperatureRiseCmdConfig(config.BaseModel):
+    simulation: SimulationConfig
+    laser: LaserConfig
+    layers: list[LayerConfig]
+    thermal: ThermalConfig
+
+
+
 @app.command()
 def temperature_rise(
     config_file: Path,
@@ -371,6 +404,9 @@ def temperature_rise(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
     configs = list(map(lambda c: compute_tissue_properties(c), configs))
+    for config in configs:
+        config = TemperatureRiseCmdConfig(**config.tree)
+        print(config)
 
     config_ids = list(map(powerconf.utils.get_id, configs))
     if print_ids:
@@ -616,7 +652,7 @@ def multiple_pulse(
     )
     # validate configs with pydantic
     # for config in configs:
-    #     schemas.MultiplePulseCmdConfig(**config.tree)
+    #     config.MultiplePulseCmdConfig(**config.tree)
 
     config_ids = list(map(powerconf.utils.get_id, configs))
     if print_ids:

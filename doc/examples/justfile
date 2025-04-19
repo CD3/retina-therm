@@ -1,0 +1,2 @@
+run:
+  uv run retina-therm temperature-rise  CONFIG-simple.yml

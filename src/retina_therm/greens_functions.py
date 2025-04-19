@@ -6,7 +6,7 @@ import scipy
 from mpmath import mp
 from tqdm import tqdm
 
-from .schemas import *
+from .config import *
 from .signals import Signal
 from .units import *
 from .utils import MarcumQFunction

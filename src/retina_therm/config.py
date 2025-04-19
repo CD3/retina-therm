@@ -14,15 +14,16 @@ from pydantic_core import CoreSchema, core_schema
 
 from .units import Q_
 
-QuantityWithUnit = lambda U: Annotated[
+QuantityWithUnit = lambda U,alias=None,desc=None: Annotated[
     str,
     AfterValidator(lambda x: Q_(x).to(U)),
     PlainSerializer(lambda x: f"{x:~}" if x is not None else "null", return_type=str),
     WithJsonSchema({"type": "string"}, mode="serialization"),
+    Field(validation_alias=alias, description=desc)
 ]
 
 
-class Layer(BaseModel):
+class LayerConfig(BaseModel):
     d: QuantityWithUnit("cm")
     z0: QuantityWithUnit("cm") = None
     mua: QuantityWithUnit("1/cm")
@@ -118,7 +119,7 @@ class PrecisionConfig(BaseModel):
 class MultiLayerGreensFunctionConfig(BaseModel):
     laser: Laser
     thermal: ThermalProperties
-    layers: List[Layer]
+    layers: List[LayerConfig]
 
     class Simulation(PrecisionConfig):
         pass

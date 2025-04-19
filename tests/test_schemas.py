@@ -2,7 +2,7 @@ import pydantic
 import pytest
 import yaml
 
-from retina_therm.schemas import *
+from retina_therm.config import *
 from retina_therm.units import *
 
 
