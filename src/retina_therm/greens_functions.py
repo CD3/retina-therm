@@ -19,9 +19,9 @@ class LargeBeamAbsorbingLayerGreensFunction:
         if type(config) == dict:
             config = LargeBeamAbsorbingLayerGreensFunctionConfig(**config)
 
-        self.mua = config.mua
-        self.k = config.k
-        self.rho = config.rho
+        self.mua = config.absorption_coeffcient
+        self.k = config.thermal_conductivity
+        self.rho = config.density
         self.c = config.c
         self.E0 = config.E0
         self.d = config.d
