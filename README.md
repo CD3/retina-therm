@@ -72,16 +72,17 @@ laser:
   wavelength: 700 nm
   duration: 10 s
   E0: 1 cal/s/cm^2
-  R: 10 um
+  one_over_e_radius: 10 um
 
-simulation:
+temperature_rise:
   sensor:
     z: 1 um
     r: 0 um
   time:
     max: 1 s
-    dt: 10 us
-  output_file : mainster-output/Tvst-{c[laser/R]}.txt
+    resolution: 10 us
+  output_file : mainster-output/Tvst-$(${/laser/one_over_e_radius}).txt
+  output_config_file : mainster-output/CONFIG-$(${/laser/one_over_e_radius}).txt
 ```
 
 
@@ -116,7 +117,7 @@ laser:
   wavelength: 700 nm
   duration: 10 s
   E0: 1 cal/s/cm^2
-  R:
+  one_over_e_radius:
     '@batch':
       - 10 um
       - 50 um
@@ -124,14 +125,15 @@ laser:
       - 500 um
       - 1000 um
 
-simulation:
+temperature_rise:
   sensor:
     z: 1 um
     r: 0 um
   time:
     max: 1 s
-    dt: 10 us
-  output_file : mainster-output/Tvst-{c[laser/R]}.txt
+    resolution: 10 us
+  output_file : mainster-output/Tvst-$(${/laser/one_over_e_radius}).txt
+  output_config_file : mainster-output/CONFIG-$(${/laser/one_over_e_radius}).txt
 ```
-Instead of giving a value to `laser.R`, we use a nested object with a field named `@batch` (we have to quote the field name here since it contains an @ character)
+Instead of giving a value to `laser.one_over_e_radius`, we use a nested object with a field named `@batch` (we have to quote the field name here since it contains an @ character)
 and list the values for the parameter. `retina-therm` will run a calculation for each of the 5 configurations in parallel.
