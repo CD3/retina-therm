@@ -2,7 +2,7 @@ import multiprocessing
 import pprint
 import sys
 from pathlib import Path
-from typing import Annotated, List
+from typing import Annotated, List, Literal, Optional, Union
 
 import numpy
 import powerconf
@@ -14,11 +14,12 @@ import typer
 import yaml
 from fspathtree import fspathtree
 from mpmath import mp
+from pydantic import BeforeValidator, ValidationError
 from tqdm import tqdm
 
 import retina_therm
-from retina_therm import (greens_functions, multi_pulse_builder, config,
-                          units, utils)
+from retina_therm import (config, greens_functions, multi_pulse_builder, units,
+                          utils)
 
 from . import parallel_jobs, utils
 
@@ -51,9 +52,7 @@ def main(ctx: typer.Context):
 def compute_evaluation_times(config):
     # if times are given in the config, just them
     if "ts" in config:
-        t = numpy.array(
-            [units.Q_(time).to("s").magnitude for time in config["ts"]]
-        )
+        t = numpy.array([units.Q_(time).to("s").magnitude for time in config["ts"]])
     else:
         # we want to support specifying the times as a single range,
         # i.e. "from tmin to tmax by steps of dt"
@@ -272,8 +271,8 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         r = units.Q_(r).to("cm").magnitude
 
         # if times are given in the config, just them
-        t = compute_evaluation_times(config['temperature_rise/time'])
-        method = config.get("/temperature_rise/method", "quad")
+        t = compute_evaluation_times(config["temperature_rise/time"])
+        method = config["/temperature_rise/method"]
         if method not in temperature_rise_integration_methods + ["undefined"]:
             raise RuntimeError(f"Unrecognized integration method '{method}'")
 
@@ -284,8 +283,11 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         self.status.emit("Writing output files...")
 
         output_paths = {}
-        for k in ["temperature_rise/output_file", "temperature_rise/output_config_file"]:
-            filename = config.get(k, None)
+        for k in [
+            "output_file",
+            "output_config_file",
+        ]:
+            filename = config["/temperature_rise"][k]
             output_paths[k + "_path"] = Path("/dev/stdout")
             if filename is not None:
                 path = Path(filename)
@@ -293,36 +295,41 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
                 if path.parent != Path():
                     path.parent.mkdir(parents=True, exist_ok=True)
 
-        output_paths["temperature_rise/output_config_file_path"].write_text(
-            yaml.dump(config.tree)
-        )
-        utils.write_to_file(
-            output_paths["temperature_rise/output_file_path"],
-            numpy.c_[t, T],
-            config.get(
-                "temperature_rise/output_file_format",
-                output_paths["temperature_rise/output_file_path"].suffix[1:],
-            ),
-        )
+        output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
+        fmt = config["/temperature_rise/output_file_format"]
+        if fmt is None:
+            fmt = output_paths["output_file_path"].suffix[1:]
+        if fmt is None:
+            fmt = "txt"
+
+        utils.write_to_file(output_paths["output_file_path"], numpy.c_[t, T], fmt)
         self.status.emit("done.")
 
 
 class SensorConfig(config.BaseModel):
     z: config.QuantityWithUnit("cm")
     r: config.QuantityWithUnit("cm")
-class TimeConfig(config.BaseModel):
-    max: config.QuantityWithUnit("s")
-    resolution: config.QuantityWithUnit("s")
+
+
 class TemperatureRiseConfig(config.BaseModel):
-    output_file: str
+    output_file: Path
+    output_config_file: Path
+    output_file_format: Optional[Literal["txt"] | Literal["hdf5"]] = None
     sensor: SensorConfig
-    time: TimeConfig
+    method: Optional[Literal["trap"] | Literal["quad"]] = "quad"
+
+    class TimeConfig(config.BaseModel):
+        max: config.QuantityWithUnit("s")
+        resolution: config.QuantityWithUnit("s")
+
+    time: Optional[TimeConfig] = None
+
+
 class TemperatureRiseCmdConfig(config.BaseModel):
     temperature_rise: TemperatureRiseConfig
     laser: config.LaserConfig
     layers: list[config.LayerConfig]
     thermal: config.ThermalPropertiesConfig
-
 
 
 @app.command()
@@ -348,6 +355,8 @@ def temperature_rise(
             help="Load configuration file(s) and print a list of the config IDs."
         ),
     ] = False,
+    verbose: Annotated[bool, typer.Option(help="Print extra information")] = False,
+    quiet: Annotated[bool, typer.Option(help="Don't print to console.")] = False,
 ):
     if list_methods:
         print("Available inegration methods:")
@@ -357,7 +366,21 @@ def temperature_rise(
 
     mp.dps = dps
 
-    configs = powerconf.yaml.powerload(config_file)
+    iconsole = rich.console.Console(stderr=False, quiet=quiet)
+    vconsole = rich.console.Console(
+        stderr=False, quiet=True if quiet or not verbose else False
+    )
+    econsole = rich.console.Console(stderr=True)
+
+    try:
+        configs = powerconf.yaml.powerload(config_file)
+    except KeyError as e:
+        econsole.print(
+            "[red]A configuration parameter references another non-existent parameter.[/red]"
+        )
+
+        econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
+        raise typer.Exit(1)
     # we need to convert all quantities to strings before we pass
     # them to the implementation classes. they do validation based on
     # string representations
@@ -367,8 +390,18 @@ def temperature_rise(
     configs = list(map(lambda c: compute_tissue_properties(c), configs))
 
     # validate configs
-    for config in configs:
-        config = TemperatureRiseCmdConfig(**config.tree)
+    for i, config in enumerate(configs):
+        try:
+            config = TemperatureRiseCmdConfig(**config.tree)
+            configs[i] = fspathtree(config.model_dump())
+        except ValidationError as e:
+            econsole.print(
+                "[red]There was an error reading the configuration file.[/red]"
+            )
+            econsole.print("\n\nPydantic Error Message:")
+            econsole.print(e)
+            econsole.print("\n\n")
+            raise typer.Exit(1)
 
     config_ids = list(map(powerconf.utils.get_id, configs))
     if print_ids:
@@ -451,22 +484,24 @@ def multipulse_microcavitation_threshold(
 
 class MultiplePulseProcess(parallel_jobs.JobProcess):
     def run_job(self, config):
-        config_id = powerconf.utils.get_id(config)
         self.status.emit(
             "Loading base temperature history for building multiple-pulse history."
         )
-        input_file = Path(config["input_file"])
+        input_file = Path(config["/multiple_pulse/input_file"])
         data = utils.read_from_file(
-            input_file, config.get("input_file_format", input_file.suffix[1:])
+            input_file,
+            config.get("/multiple_pulse/input_file_format", input_file.suffix[1:]),
         )
+
+        self.status.emit("Resampling temeprature history to regularized grid")
         imax = len(data)
         tmax = units.Q_(data[-1, 0], "s")
         # if tmax is given in the config file, we want to trucate
         # the input data to include the first time >= tmax
         # this is an optimization reduces the size of the array we
         # are working.
-        if "/tmax" in config:
-            tmax = units.Q_(config["/tmax"])
+        if config["/multiple_pulse/time/max"] is not None:
+            tmax = units.Q_(config["/multiple_pulse/time/max"])
             if tmax.to("s").magnitude < data[0, 0]:
                 raise RuntimeError(
                     f"/tmax ({tmax}) cannot be less than first time in history ({data[0,0]})."
@@ -480,8 +515,16 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
         t = data[:, 0]
         T = data[:, 1]
 
-        if not multi_pulse_builder.is_uniform_spaced(t):
-            tp = multi_pulse_builder.regularize_grid(t)
+        # regularize the time samples.
+        # need times to be uniformly spaced apart.
+        resolution = t[1] - t[0]
+        if config["/multiple_pulse/time/resolution"] is not None:
+            resolution = (
+                units.Q_(config["/multiple_pulse/time/resolution"]).to("s").magnitude
+            )
+
+        if not multi_pulse_builder.is_resolution(t, resolution):
+            tp = multi_pulse_builder.regularize_grid(t, resolution)
             Tp = multi_pulse_builder.interpolate_temperature_history(t, T, tp)
             t = tp
             T = Tp
@@ -493,66 +536,12 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
 
         builder.set_temperature_history(t, T)
 
-        # if a pulse duration is given, then it means we have a CW exposure
-        # and we need to create the single pulse exposure by adding a -1 scale
-        if "/tau" in config:
-            builder.add_contribution(0, 1)
-            builder.add_contribution(units.Q_(config["tau"]).to("s").magnitude, -1)
-            Tsp = builder.build()
-            builder.set_temperature_history(t, Tsp)
-            builder.clear_contributions()
-
-        contributions = []
-        if "/contributions" in config:
-            for c in config["/contributions"]:
-                contributions.append(
-                    {
-                        "arrival_time": units.Q_(c["arrival_time"]).to("s").magnitude,
-                        "scale": float(c["scale"]),
-                    }
-                )
-
-        if (
-            "/tau" in config
-            and "/T" in config
-            and "/N" in config
-            and "/t0" not in config
-        ):
-            # if the total exposure time and number of pulses are given, we want
-            # to compute the inter-pulse spacing that would fit the begining of
-            # the first pulse and the end of the last pulse.
-            tau = units.Q_(config["/tau"])
-            T = units.Q_(config["/T"])
-            N = units.Q_(config["/N"])
-            if N < 2:
-                config["/t0"] = str(tmax)
-
-            else:
-                t0 = (T - tau) / (N - 1)
-                config["/t0"] = f"{t0:~}"
-
-        if "/t0" in config:
-            t0 = units.Q_(config["/t0"])
-            if "/N" not in config:
-                N = int((tmax / t0).magnitude)
-                config["/N"] = f"{N:.2f}"
-
-            N = units.Q_(config["/N"])
-
-            arrival_time = units.Q_(0, "s")
-            n = 0
-            while arrival_time.to("s").magnitude < t[-1] and n < N:
-                contributions.append(
-                    {
-                        "arrival_time": arrival_time.to("s").magnitude,
-                        "scale": config.get("/scale", 1),
-                    }
-                )
-                arrival_time += t0
-                n += 1
-
-        for c in contributions:
-            builder.add_contribution(c["arrival_time"], c["scale"])
+        for pulse in config["/multiple_pulse/pulses"]:
+            t1 = units.Q_(pulse["arrival_time"]).to("s")
+            t2 = t1 + units.Q_(pulse["duration"]).to("s")
+            scale = pulse["scale"]
+            builder.add_contribution(t1.magnitude, scale)
+            builder.add_contribution(t2.magnitude, -scale)
 
         self.status.emit("Building temperature history")
         Tmp = builder.build()
@@ -561,71 +550,94 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
 
         data[:, 1] = Tmp
 
-        ctx = {
-            "config_id": config_id,
-            "c": config,
-        }
-
         output_paths = {}
         for k in ["output_file", "output_config_file"]:
-            filename = config.get(k, None)
+            filename = config["/multiple_pulse"][k]
             output_paths[k + "_path"] = Path("/dev/stdout")
             if filename is not None:
-                filename = filename.format(**ctx).replace(" ", "_")
                 path = Path(filename)
                 output_paths[k + "_path"] = path
                 if path.parent != Path():
                     path.parent.mkdir(parents=True, exist_ok=True)
 
         output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
-        utils.write_to_file(
-            output_paths["output_file_path"],
-            data,
-            config.get(
-                "output_file_format", output_paths["output_file_path"].suffix[1:]
-            ),
-        )
+        fmt = config["/multiple_pulse/output_file_format"]
+        if fmt is None:
+            fmt = output_paths["output_file_path"].suffix[1:]
+        if fmt is None:
+            fmt = "txt"
+
+        utils.write_to_file(output_paths["output_file_path"], data, fmt)
         self.status.emit("done.")
+
+
+class PulseConfig(config.BaseModel):
+    arrival_time: config.QuantityWithUnit("s")
+    duration: config.QuantityWithUnit("s")
+    scale: float
+
+
+class MultiplePulseConfig(config.BaseModel):
+    input_file: Path
+    output_file: Path
+    output_file_format: Optional[Literal["txt"] | Literal["hdf5"]] = None
+    output_config_file: Path
+    pulses: list[PulseConfig]
+
+    class TimeConfig(config.BaseModel):
+        max: Optional[config.QuantityWithUnit("s")] = None
+        resolution: Optional[config.QuantityWithUnit("s")] = None
+
+    time: Optional[TimeConfig] = TimeConfig()
+
+
+class MultiplePulseCmdConfig(config.BaseModel):
+    multiple_pulse: MultiplePulseConfig
 
 
 @app.command()
 def multiple_pulse(
     config_file: Path,
     jobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
-    ids: Annotated[
-        List[str],
-        typer.Option(
-            help="Only run simulation for configurations with ID in the given list."
-        ),
-    ] = [],
-    print_ids: Annotated[
-        bool,
-        typer.Option(
-            help="Load configuration file(s) and print a list of the config IDs."
-        ),
-    ] = False,
+    verbose: Annotated[bool, typer.Option(help="Print extra information")] = False,
+    quiet: Annotated[bool, typer.Option(help="Don't print to console.")] = False,
 ):
-    configs = powerconf.yaml.powerload(config_file)
+    iconsole = rich.console.Console(stderr=False, quiet=quiet)
+    vconsole = rich.console.Console(
+        stderr=False, quiet=True if quiet or not verbose else False
+    )
+    econsole = rich.console.Console(stderr=True)
+
+    try:
+        configs = powerconf.yaml.powerload(config_file)
+    except KeyError as e:
+        econsole.print(
+            "[red]A configuration parameter references another non-existent parameter.[/red]"
+        )
+
+        econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
+        raise typer.Exit(1)
     configs = list(
         filter(lambda c: "/remove" not in c or not any(c["/remove"]), configs)
     )
     configs = powerconf.utils.apply_transform(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
-    # validate configs with pydantic
-    # for config in configs:
-    #     config.MultiplePulseCmdConfig(**config.tree)
+    # validate configs
+    for i, config in enumerate(configs):
+        try:
+            config = MultiplePulseCmdConfig(**config.tree)
+            configs[i] = fspathtree(config.model_dump())
+        except ValidationError as e:
+            econsole.print(
+                "[red]There was an error reading the configuration file.[/red]"
+            )
+            econsole.print("\n\nPydantic Error Message:")
+            econsole.print(e)
+            econsole.print("\n\n")
+            raise typer.Exit(1)
 
-    config_ids = list(map(powerconf.utils.get_id, configs))
-    if print_ids:
-        for _id in config_ids:
-            print(_id)
-        raise typer.Exit(0)
-
-    if len(ids) == 0:
-        ids = config_ids
-
-    configs_to_run = list(filter(lambda c: powerconf.utils.get_id(c) in ids, configs))
+    configs_to_run = configs
     if len(configs_to_run) > 1:
         # disable printing status information when we are processing multiple configurations
         console.print = lambda *args, **kwargs: None

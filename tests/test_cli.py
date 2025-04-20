@@ -31,18 +31,17 @@ laser:
   one_over_e_radius: $(${D}/2)
   wavelength: 530 nm
 
-sensor:
-  z: 70 um
-  r: 0 um
-
-simulation:
+temperature_rise:
+  sensor:
+      z: 70 um
+      r: 0 um
   use_approximations: True
   temperature_rise:
     method: quad
   output_file: 'output/CW/output-Tvst.txt'
   output_config_file: 'output/CW/output-CONFIG.yml'
   time:
-      dt: 0.1 ms
+      resolution: 0.1 ms
       max: 2 ms
 
 """
@@ -79,25 +78,24 @@ laser:
   wavelength: 530 nm
 
 
-sensor:
-  z: 70 um
-  r: 0 um
-
-simulation:
+temperature_rise:
   use_approximations: True
   temperature_rise:
     method: quad
   output_file: 'output/CW/output-Tvst.txt'
   output_config_file: 'output/CW/output-CONFIG.yml'
   time:
-      dt: 0.1 ms
+      resolution: 0.1 ms
       max: 2 ms
+  sensor:
+      z: 70 um
+      r: 0 um
+
 
 """
     )
 
 
-@pytest.mark.skip()
 def test_cli_help():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
@@ -107,46 +105,44 @@ def test_cli_help():
     assert "Usage:" in result.stdout
 
 
-@pytest.mark.skip()
-def test_cli_simple_model(simple_config):
+def test_cli_simple_model_hdf5_output(simple_config):
     runner = CliRunner()
     with runner.isolated_filesystem():
+        simple_config["temperature_rise"]["output_file_format"] = "hdf5"
         pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
         result = runner.invoke(app, ["temperature-rise", "input.yml"])
-        assert result.exit_code == 0
-        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
-        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
-
-        simple_config["simulation"]["output_file"] = "{c[laser/D]}-Tvst.txt"
-        pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
-        result = runner.invoke(app, ["temperature-rise", "input.yml"])
-        assert result.exit_code == 0
-        assert pathlib.Path("100_micrometer-Tvst.txt").exists()
-
-        output = pathlib.Path("output/CW/output-Tvst.txt").read_text()
-
-
-@pytest.mark.skip()
-def test_cli_schulmeister_model(base_schulmeister_config):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        pathlib.Path("input.yml").write_text(yaml.dump(base_schulmeister_config))
-        result = runner.invoke(app, ["temperature-rise", "input.yml"])
-        assert result.exit_code == 0
-        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
-        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
-
-
-@pytest.mark.skip()
-def test_cli_simple_model(simple_config):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        simple_config["simulation"]["output_format"] = "hdf5"
-        pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
-        result = runner.invoke(app, ["temperature-rise", "input.yml"])
+        if result.exit_code != 0:
+            print(result.stdout)
+            print(result.stderr)
         assert result.exit_code == 0
         assert pathlib.Path("output/CW/output-Tvst.txt").exists()
         assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
 
         with pytest.raises(UnicodeDecodeError):
             output = pathlib.Path("output/CW/output-Tvst.txt").read_text()
+
+
+def test_cli_simple_model(simple_config):
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
+        result = runner.invoke(app, ["temperature-rise", "input.yml"])
+        if result.exit_code != 0:
+            print(result.stdout)
+            print(result.stderr)
+        assert result.exit_code == 0
+        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
+        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
+
+
+def test_cli_schulmeister_model(base_schulmeister_config):
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("input.yml").write_text(yaml.dump(base_schulmeister_config))
+        result = runner.invoke(app, ["temperature-rise", "input.yml"])
+        if result.exit_code != 0:
+            print(result.stdout)
+            print(result.stderr)
+        assert result.exit_code == 0
+        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
+        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()

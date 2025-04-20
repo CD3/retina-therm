@@ -15,8 +15,15 @@ def is_uniform_spaced(x: numpy.array, tol: float = 1e-10):
     return True
 
 
-def regularize_grid(t):
-    dt = t[1] - t[0]
+def is_resolution(x: numpy.array, res: float, tol: float = 1e-10):
+    if is_uniform_spaced(x, tol):
+        return abs((x[1] - x[0]) - res) < tol
+    return False
+
+
+def regularize_grid(t, dt = None):
+    if dt is None:
+        dt = t[1] - t[0]
     tmax = t[-1]
     tmin = t[0]
     N = int((tmax - tmin) / dt) + 1

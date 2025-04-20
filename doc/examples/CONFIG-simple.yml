@@ -31,7 +31,20 @@ temperature_rise:
     max: 100 ms
     resolution: 100 us
     dt: 100 us
-  output_file : simple-output/Tvst-$(${/laser/one_over_e_radius}).txt
+  output_file : simple-output/CW/Tvst-$(${/laser/one_over_e_radius}).txt
+  output_config_file : simple-output/CW/CONFIG-$(${/laser/one_over_e_radius}).txt
 
 multiple_pulse:
-  N = 1
+  input_file: $(${/temperature_rise/output_file})
+  output_file: $(${/temperature_rise/output_file}.replace("CW","MP"))
+  output_config_file: $(${/temperature_rise/output_config_file}.replace("CW","MP"))
+  time:
+    resolution: 200 us
+    max: 75 ms
+  pulses:
+    - arrival_time: 0 ms
+      duration: 10 ms
+      scale: 1
+    - arrival_time: 20 ms
+      duration: 10 ms
+      scale: 2

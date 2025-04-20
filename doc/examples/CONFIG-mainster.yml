@@ -13,13 +13,14 @@ laser:
   wavelength: 700 nm
   duration: 10 s
   E0: 1 cal/s/cm^2
-  R: 10 um
+  one_over_e_radius: 10 um
 
-simulation:
+temperature_rise:
   sensor:
     z: 1 um
     r: 0 um
   time:
     max: 1 s
-    dt: 10 us
-  output_file : mainster-output/Tvst-{c[laser/R]}.txt
+    resolution: 10 us
+  output_file : mainster-output/Tvst-$(${/laser/one_over_e_radius}).txt
+  output_config_file : mainster-output/CONFIG-$(${/laser/one_over_e_radius}).txt

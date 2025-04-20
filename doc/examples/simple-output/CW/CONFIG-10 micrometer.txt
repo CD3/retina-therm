@@ -1,0 +1,33 @@
+laser:
+  irradiance: 4.184 W / cm ** 2
+  one_over_e_radius: 0.001 cm
+  profile: flattop
+layers:
+- absorption_coeffcient: 310.0 / cm
+  position: 0.0 cm
+  thickness: 0.001 cm
+- absorption_coeffcient: 53.0 / cm
+  position: 0.001 cm
+  thickness: 0.009999999999999998 cm
+simulation: &id001
+  method: quad
+  output_config_file: !!python/object/apply:pathlib.PosixPath
+  - simple-output
+  - CW
+  - CONFIG-10 micrometer.txt
+  output_file: !!python/object/apply:pathlib.PosixPath
+  - simple-output
+  - CW
+  - Tvst-10 micrometer.txt
+  output_file_format: hdf5
+  sensor:
+    r: 0.0 cm
+    z: 9.999999999999999e-05 cm
+  time:
+    max: 0.1 s
+    resolution: 9.999999999999999e-05 s
+temperature_rise: *id001
+thermal:
+  c: 4.184 J / g / K
+  k: 0.006276 W / cm / K
+  rho: 1.0 g / cm ** 3

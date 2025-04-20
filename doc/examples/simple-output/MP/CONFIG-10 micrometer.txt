@@ -1,0 +1,24 @@
+multiple_pulse:
+  input_file: !!python/object/apply:pathlib.PosixPath
+  - simple-output
+  - CW
+  - Tvst-10 micrometer.txt
+  output_config_file: !!python/object/apply:pathlib.PosixPath
+  - simple-output
+  - MP
+  - CONFIG-10 micrometer.txt
+  output_file: !!python/object/apply:pathlib.PosixPath
+  - simple-output
+  - MP
+  - Tvst-10 micrometer.txt
+  output_file_format: null
+  pulses:
+  - arrival_time: 0.0 s
+    duration: 0.01 s
+    scale: 1.0
+  - arrival_time: 0.02 s
+    duration: 0.01 s
+    scale: 2.0
+  time:
+    max: 0.075 s
+    resolution: 0.00019999999999999998 s
