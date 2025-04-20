@@ -97,145 +97,6 @@ def compute_evaluation_times(config):
     return t
 
 
-class RelaxationTimeProcess(parallel_jobs.JobProcess):
-    def run_job(self, config):
-        G = greens_functions.MultiLayerGreensFunction(config.tree)
-        threshold = config["relaxation_time/threshold"]
-        dt = config.get("simulation/time/dt", "1 us")
-        dt = units.Q_(dt).to("s").magnitude
-        tmax = config.get("simulation/time/max", "1 year")
-        tmax = units.Q_(tmax).to("s").magnitude
-        z = config.get("sensor/z", "0 um")
-        z = units.Q_(z).to("cm").magnitude
-        r = config.get("sensor/r", "0 um")
-        r = units.Q_(r).to("cm").magnitude
-        i = 0
-        t = i * dt
-        T = G(z, t)
-        Tp = T
-        Tth = threshold * Tp
-
-        status.emit(f"Looking for {threshold} thermal relaxation time.\n")
-        status.emit(f"Peak temperature is {mp.nstr(Tp, 5)}\n")
-        status.emit(f"Looking for time to {mp.nstr(Tth, 5)}\n")
-        i = 1
-        while T > threshold * Tp:
-            i *= 2
-            t = i * dt
-            T = G(z, t)
-        i_max = i
-        i_min = i / 2
-        status.emit(f"Relaxation time bracketed: [{i_min*dt},{i_max*dt}]\n")
-
-        t = utils.bisect(lambda t: G(z, r, t) - Tth, i_min * dt, i_max * dt)
-        t = sum(t) / 2
-        T = G(z, r, t)
-
-        status.emit(f"time: {mp.nstr(mp.mpf(t), 5)}\n")
-        status.emit(f"Temperature: {mp.nstr(T, 5)}\n")
-
-
-@app.command()
-def relaxation_time(
-    config_file: Path,
-    dps: Annotated[
-        int,
-        typer.Option(help="The precision to use for calculations when mpmath is used."),
-    ] = 100,
-    threshold: Annotated[float, typer.Option()] = 0.01,
-):
-    configs = load_config(config_file, override)
-
-    mp.dps = dps
-
-    jobs = []
-    # create the jobs to run
-    for config in configs:
-        config["relaxation_time/threshold"] = threshold
-        jobs.append(multiprocessing.Process(target=relaxation_time_job, args=(config,)))
-    # run the jobs
-    for job in jobs:
-        job.start()
-    # wait on the jobs
-    for job in jobs:
-        job.join()
-
-
-class ImpulseResponseProcess(parallel_jobs.JobProcess):
-    def run_job(self, config):
-        config_id = powerconf.utils.get_id(config)
-
-        G = greens_functions.MultiLayerGreensFunction(config.tree)
-        eval_times = compute_evaluation_times(config)
-        z = config.get("sensor/z", "0 um")
-        z = units.Q_(z).to("cm").magnitude
-        r = config.get("sensor/r", "0 um")
-        r = units.Q_(r).to("cm").magnitude
-
-        ctx = {
-            "config_id": config_id,
-            "c": config,
-        }
-
-        output_paths = {}
-        for k in ["simulation/output_file", "simulation/output_config_file"]:
-            filename = config.get(k, None)
-            output_paths[k + "_path"] = Path("/dev/stdout")
-            if filename is not None:
-                try:
-                    filename = filename.format(**ctx).replace(" ", "_")
-                except:
-                    raise RuntimeError(
-                        f"There was an error trying to generate output filename from template '{filename}'."
-                    )
-                path = Path(filename)
-                output_paths[k + "_path"] = path
-                if path.parent != Path():
-                    path.parent.mkdir(parents=True, exist_ok=True)
-
-        output_paths["simulation/output_config_file_path"].write_text(
-            yaml.dump(config.tree)
-        )
-
-        with output_paths["simulation/output_file_path"].open("w") as f:
-            for t in eval_times:
-                T = G(z, r, t)
-                f.write(f"{t} {T}\n")
-
-        self.status.emit("done.")
-
-
-@app.command()
-def impulse_response(
-    config_file: Path,
-    jobs: int = None,
-    dps: Annotated[
-        int,
-        typer.Option(help="The precision to use for calculations when mpmath is used."),
-    ] = 100,
-):
-    mp.dps = dps
-
-    configs = powerconf.yaml.powerload(config_file)
-    configs = powerconf.utils.apply_transform(
-        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
-    )
-    for config in configs:
-        if "/impulse_response/threshold" not in config:
-            config["/impulse_response/threshold"] = 0.01
-
-    if jobs is None or jobs > 1:
-        jobs = min(multiprocessing.cpu_count(), len(configs_to_run))
-        controller = parallel_jobs.Controller(ImpulseResponseProcess, jobs)
-        controller.run(configs)
-        controller.stop()
-    else:
-        p = ImpulseResponseProcess()
-        for config in configs:
-            p.run_job(config)
-
-    raise typer.Exit(0)
-
 
 temperature_rise_integration_methods = ["quad", "trap"]
 
@@ -257,6 +118,44 @@ def compute_tissue_properties(config):
             )
             layer["mua"] = str(mua)  # config validators expect strings for quantities
     return config
+
+
+
+
+#  _____                                   _                  ____  _          
+# |_   _|__ _ __ ___  _ __   ___ _ __ __ _| |_ _   _ _ __ ___|  _ \(_)___  ___ 
+#   | |/ _ \ '_ ` _ \| '_ \ / _ \ '__/ _` | __| | | | '__/ _ \ |_) | / __|/ _ \
+#   | |  __/ | | | | | |_) |  __/ | | (_| | |_| |_| | | |  __/  _ <| \__ \  __/
+#   |_|\___|_| |_| |_| .__/ \___|_|  \__,_|\__|\__,_|_|  \___|_| \_\_|___/\___|
+#                    |_|                                                       
+
+
+class SensorConfig(config.BaseModel):
+    z: config.QuantityWithUnit("cm")
+    r: config.QuantityWithUnit("cm")
+
+
+class TemperatureRiseConfig(config.BaseModel):
+    output_file: Path
+    output_config_file: Path
+    output_file_format: Optional[Literal["txt"] | Literal["hdf5"]] = None
+    sensor: SensorConfig
+    method: Optional[Literal["trap"] | Literal["quad"]] = "quad"
+
+    class TimeConfig(config.BaseModel):
+        max: config.QuantityWithUnit("s")
+        resolution: config.QuantityWithUnit("s")
+
+    time: Optional[TimeConfig] = None
+
+
+class TemperatureRiseCmdConfig(config.BaseModel):
+    temperature_rise: TemperatureRiseConfig
+    laser: config.LaserConfig
+    layers: list[config.LayerConfig]
+    thermal: config.ThermalPropertiesConfig
+
+
 
 
 class TemperatureRiseProcess(parallel_jobs.JobProcess):
@@ -304,32 +203,6 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
 
         utils.write_to_file(output_paths["output_file_path"], numpy.c_[t, T], fmt)
         self.status.emit("done.")
-
-
-class SensorConfig(config.BaseModel):
-    z: config.QuantityWithUnit("cm")
-    r: config.QuantityWithUnit("cm")
-
-
-class TemperatureRiseConfig(config.BaseModel):
-    output_file: Path
-    output_config_file: Path
-    output_file_format: Optional[Literal["txt"] | Literal["hdf5"]] = None
-    sensor: SensorConfig
-    method: Optional[Literal["trap"] | Literal["quad"]] = "quad"
-
-    class TimeConfig(config.BaseModel):
-        max: config.QuantityWithUnit("s")
-        resolution: config.QuantityWithUnit("s")
-
-    time: Optional[TimeConfig] = None
-
-
-class TemperatureRiseCmdConfig(config.BaseModel):
-    temperature_rise: TemperatureRiseConfig
-    laser: config.LaserConfig
-    layers: list[config.LayerConfig]
-    thermal: config.ThermalPropertiesConfig
 
 
 @app.command()
@@ -432,54 +305,35 @@ def temperature_rise(
     raise typer.Exit(0)
 
 
-@app.command()
-def multipulse_microcavitation_threshold(
-    config_file: Path,
-    dps: Annotated[
-        int,
-        typer.Option(help="The precision to use for calculations when mpmath is used."),
-    ] = 100,
-    override: Annotated[
-        list[str],
-        typer.Option(
-            help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
-        ),
-    ] = [],
-):
-    configs = load_config(config_file, override)
-    mp.dps = dps
+#  __  __       _ _   _       _                        _          
+# |  \/  |_   _| | |_(_)_ __ | | ___       _ __  _   _| |___  ___ 
+# | |\/| | | | | | __| | '_ \| |/ _ \_____| '_ \| | | | / __|/ _ \
+# | |  | | |_| | | |_| | |_) | |  __/_____| |_) | |_| | \__ \  __/
+# |_|  |_|\__,_|_|\__|_| .__/|_|\___|     | .__/ \__,_|_|___/\___|
+#                      |_|                |_|                     
 
-    for config in configs:
-        T0 = config.get("baseline_temperature", "37 degC")
-        toks = T0.split(maxsplit=1)
-        T0 = units.Q_(float(toks[0]), toks[1]).to("K")
-        Tnuc = config.get("microcavitation/Tnuc", "116 degC")
-        toks = Tnuc.split(maxsplit=1)
-        Tnuc = units.Q_(float(toks[0]), toks[1]).to("K")
-        m = units.Q_(config.get("microcavitation/m", "-1 mJ/cm^2/K"))
-        PRF = units.Q_(config.get("laser/PRF", "1 kHz"))
-        t0 = 1 / PRF
-        t0 = t0.to("s").magnitude
-        N = 1000
+class PulseConfig(config.BaseModel):
+    arrival_time: config.QuantityWithUnit("s")
+    duration: config.QuantityWithUnit("s")
+    scale: float
 
-        output_file = config.get("simulation/output_file", "Hth_vs_N.txt")
 
-        config["laser/E0"] = "1 W/cm^2"  # override user power
-        G = greens_functions.MultiLayerGreensFunction(config.tree)
-        z = config.get("sensor/z", "0 um")
-        z = units.Q_(z).to("cm").magnitude
-        r = config.get("sensor/r", "0 um")
-        r = units.Q_(r).to("cm").magnitude
+class MultiplePulseConfig(config.BaseModel):
+    input_file: Path
+    output_file: Path
+    output_file_format: Optional[Literal["txt"] | Literal["hdf5"]] = None
+    output_config_file: Path
+    pulses: list[PulseConfig]
 
-        T = numpy.zeros([N])
+    class TimeConfig(config.BaseModel):
+        max: Optional[config.QuantityWithUnit("s")] = None
+        resolution: Optional[config.QuantityWithUnit("s")] = None
 
-        for i in range(1, len(T)):
-            T[i] = T[i - 1] + G(z, r, t0 * i)
+    time: Optional[TimeConfig] = TimeConfig()
 
-        with output_file.open("w") as f:
-            for n in range(1, N):
-                H = (m * T0 - m * Tnuc) / (1 - m * units.Q_(T[n - 1], "K/(J/cm^2)"))
-                f.write(f"{n} {H}\n")
+
+class MultiplePulseCmdConfig(config.BaseModel):
+    multiple_pulse: MultiplePulseConfig
 
 
 class MultiplePulseProcess(parallel_jobs.JobProcess):
@@ -569,30 +423,6 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
 
         utils.write_to_file(output_paths["output_file_path"], data, fmt)
         self.status.emit("done.")
-
-
-class PulseConfig(config.BaseModel):
-    arrival_time: config.QuantityWithUnit("s")
-    duration: config.QuantityWithUnit("s")
-    scale: float
-
-
-class MultiplePulseConfig(config.BaseModel):
-    input_file: Path
-    output_file: Path
-    output_file_format: Optional[Literal["txt"] | Literal["hdf5"]] = None
-    output_config_file: Path
-    pulses: list[PulseConfig]
-
-    class TimeConfig(config.BaseModel):
-        max: Optional[config.QuantityWithUnit("s")] = None
-        resolution: Optional[config.QuantityWithUnit("s")] = None
-
-    time: Optional[TimeConfig] = TimeConfig()
-
-
-class MultiplePulseCmdConfig(config.BaseModel):
-    multiple_pulse: MultiplePulseConfig
 
 
 @app.command()
@@ -703,10 +533,6 @@ def truncate_temperature_history_file(
             help="Threshold temperature for truncating. Can be a temperature or a fraction. If a fraction is given, the threshold temperature will be computed as threshold*Tmax."
         ),
     ] = "0.001",
-    # line_count: Annotated[
-    #     float,
-    #     typer.Option(help="Line count for truncating."),
-    # ],
 ):
     """
     Truncate a temperature history file, removing all point in the end of the history where the temperature is below threshold*Tmax.
@@ -725,109 +551,337 @@ def truncate_temperature_history_file(
     controller.stop()
 
 
-@app.command()
-def print_config_ids(
-    config_file: Path,
-):
-    """Print IDs of configuration in CONFIG_FILES. Useful for determining if a configuration has already been ran."""
-    configs = powerconf.yaml.powerload(config_file)
-    configs = powerconf.utils.apply_transform(
-        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
-    )
-    configs = list(map(lambda c: compute_tissue_properties(c), configs))
-    config_ids = list(map(powerconf.utils.get_id, configs))
-    for _id in config_ids:
-        print(_id)
 
 
-@app.command()
-def config(
-    print_multiple_pulse_example_config: Annotated[
-        bool,
-        typer.Option(
-            help="Print an example configuration file for the multiple-pulse command and exit."
-        ),
-    ] = False,
-    print_temperature_rise_example_config: Annotated[
-        bool,
-        typer.Option(
-            help="Print an example configuration file for the temperature-rise command and exit."
-        ),
-    ] = False,
-):
-    """Various config file related task. i.e. print example config, etc."""
-    print("Under Developement")
-    return
-
-    if print_multiple_pulse_example_config:
-        config = fspathtree()
-        config["/input_file"] = "input/CW/Tvst.txt"
-        config["/output_file"] = "output/MP/{c[tau]}-{c[N]}-Tvst.txt"
-        config["/output_config_file"] = "output/MP/{c[tau]}-{c[N]}-CONFIG.yml"
-        config["/tau"] = "100 us"
-        config["/t0"] = "100 us"
-        config["/N"] = 100
-        print(yaml.dump(config.tree))
-        raise typer.Exit(1)
-
-    if print_temperature_rise_example_config:
-        config = fspathtree()
-        config["/thermal/k"] = "0.6306 W/m/K"
-        config["/thermal/rho"] = "992 kg/m^3"
-        config["/thermal/c"] = "4178 J /kg / K"
-        config["/layers/0/name"] = "RPE"
-        config["/layers/0/z0"] = "0 um"
-        config["/layers/0/d"] = "10 um"
-        config["/layers/0/mua"] = "720 1/cm"
-        config["/layers/1/name"] = "Choroid"
-        config["/layers/1/z0"] = "4 um"
-        config["/layers/1/d"] = "20 um"
-        config["/layers/1/mua"] = "140 1/cm"
-        config["/laser/E0"] = "1 W/cm^2"
-        config["/laser/D"] = "100 um"
-        config["/laser/profile"] = "flattop"
-        config["/sensor/z"] = "0 um"
-        config["/sensor/r"] = "0 um"
-        config["/temperature_rise/use_approximations"] = True
-        config["/temperature_rise/temperature_rise/method"] = "quad"
-        config["/temperature_rise/output_file"] = (
-            "output/CW/{c[/laser/D]}-{c[/sensor/r]}-Tvst.txt"
-        )
-        config["/temperature_rise/output_config_file"] = (
-            "output/CW/{c[/laser/D]}-{c[/sensor/r]}-CONFIG.yml"
-        )
-        config["/temperature_rise/time/dt"] = "1 us"
-        config["/temperature_rise/time/max"] = "10 ms"
-
-        print(yaml.dump(config.tree))
-        raise typer.Exit(1)
 
 
-@app.command()
-def convert_file(
-    input_file: Path,
-    output_file: Path,
-    input_format: Annotated[
-        str, typer.Option("--input-format", "-f", help="Input file format")
-    ] = None,
-    output_format: Annotated[
-        str, typer.Option("--output-format", "-t", help="Output file format")
-    ] = None,
-    filetype: Annotated[str, typer.Option(help="File type (e.g. Tvst)")] = None,
-):
-    if not input_file.exists():
-        print(f"ERROR: {input_file} does not exists.")
-        raise typer.Exit(1)
 
-    formats = ["txt", "hd5", "rt"]
 
-    if input_format is None:
-        input_format = input_file.suffix[1:]
+ # _            _                           _     _                              
+# | |_ ___   __| | ___ _   _ __   ___  _ __| |_  | |_ ___    _ __   _____      __
+# | __/ _ \ / _` |/ _ (_) | '_ \ / _ \| '__| __| | __/ _ \  | '_ \ / _ \ \ /\ / /
+# | || (_) | (_| | (_) |  | |_) | (_) | |  | |_  | || (_) | | | | |  __/\ V  V / 
+ # \__\___/ \__,_|\___(_) | .__/ \___/|_|   \__|  \__\___/  |_| |_|\___| \_/\_/  
+ #                        |_|                                                    
+ #                  __ _       
+ #  ___ ___  _ __  / _(_) __ _ 
+ # / __/ _ \| '_ \| |_| |/ _` |
+# | (_| (_) | | | |  _| | (_| |
+ # \___\___/|_| |_|_| |_|\__, |
+ #                       |___/ 
+ #  __                                             _    
+ # / _|_ __ __ _ _ __ ___   _____      _____  _ __| | __
+# | |_| '__/ _` | '_ ` _ \ / _ \ \ /\ / / _ \| '__| |/ /
+# |  _| | | (_| | | | | | |  __/\ V  V / (_) | |  |   < 
+# |_| |_|  \__,_|_| |_| |_|\___| \_/\_/ \___/|_|  |_|\_\
+                                                      
 
-    if output_format is None:
-        output_format = output_file.suffix[1:]
 
-    print(f"{input_file}({input_format}) -> {output_file}({output_format})")
+# @app.command()
+# def print_config_ids(
+ #    config_file: Path,
+# ):
+ #    """Print IDs of configuration in CONFIG_FILES. Useful for determining if a configuration has already been ran."""
+ #    configs = powerconf.yaml.powerload(config_file)
+ #    configs = powerconf.utils.apply_transform(
+ #        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
+ #    )
+ #    configs = list(map(lambda c: compute_tissue_properties(c), configs))
+ #    config_ids = list(map(powerconf.utils.get_id, configs))
+ #    for _id in config_ids:
+ #        print(_id)
 
-    data = utils.read_Tvst_from_file(input_file, input_format)
-    data = utils.write_Tvst_to_file(data, output_file, output_format)
+
+# @app.command()
+# def convert_file(
+ #    input_file: Path,
+ #    output_file: Path,
+ #    input_format: Annotated[
+ #        str, typer.Option("--input-format", "-f", help="Input file format")
+ #    ] = None,
+ #    output_format: Annotated[
+ #        str, typer.Option("--output-format", "-t", help="Output file format")
+ #    ] = None,
+ #    filetype: Annotated[str, typer.Option(help="File type (e.g. Tvst)")] = None,
+# ):
+ #    if not input_file.exists():
+ #        print(f"ERROR: {input_file} does not exists.")
+ #        raise typer.Exit(1)
+
+ #    formats = ["txt", "hd5", "rt"]
+
+ #    if input_format is None:
+ #        input_format = input_file.suffix[1:]
+
+ #    if output_format is None:
+ #        output_format = output_file.suffix[1:]
+
+ #    print(f"{input_file}({input_format}) -> {output_file}({output_format})")
+
+ #    data = utils.read_Tvst_from_file(input_file, input_format)
+ #    data = utils.write_Tvst_to_file(data, output_file, output_format)
+
+
+
+
+
+
+# class RelaxationTimeProcess(parallel_jobs.JobProcess):
+ #    def run_job(self, config):
+ #        G = greens_functions.MultiLayerGreensFunction(config.tree)
+ #        threshold = config["relaxation_time/threshold"]
+ #        dt = config.get("simulation/time/dt", "1 us")
+ #        dt = units.Q_(dt).to("s").magnitude
+ #        tmax = config.get("simulation/time/max", "1 year")
+ #        tmax = units.Q_(tmax).to("s").magnitude
+ #        z = config.get("sensor/z", "0 um")
+ #        z = units.Q_(z).to("cm").magnitude
+ #        r = config.get("sensor/r", "0 um")
+ #        r = units.Q_(r).to("cm").magnitude
+ #        i = 0
+ #        t = i * dt
+ #        T = G(z, t)
+ #        Tp = T
+ #        Tth = threshold * Tp
+
+ #        status.emit(f"Looking for {threshold} thermal relaxation time.\n")
+ #        status.emit(f"Peak temperature is {mp.nstr(Tp, 5)}\n")
+ #        status.emit(f"Looking for time to {mp.nstr(Tth, 5)}\n")
+ #        i = 1
+ #        while T > threshold * Tp:
+ #            i *= 2
+ #            t = i * dt
+ #            T = G(z, t)
+ #        i_max = i
+ #        i_min = i / 2
+ #        status.emit(f"Relaxation time bracketed: [{i_min*dt},{i_max*dt}]\n")
+
+ #        t = utils.bisect(lambda t: G(z, r, t) - Tth, i_min * dt, i_max * dt)
+ #        t = sum(t) / 2
+ #        T = G(z, r, t)
+
+ #        status.emit(f"time: {mp.nstr(mp.mpf(t), 5)}\n")
+ #        status.emit(f"Temperature: {mp.nstr(T, 5)}\n")
+
+
+# @app.command()
+# def relaxation_time(
+ #    config_file: Path,
+ #    dps: Annotated[
+ #        int,
+ #        typer.Option(help="The precision to use for calculations when mpmath is used."),
+ #    ] = 100,
+ #    threshold: Annotated[float, typer.Option()] = 0.01,
+# ):
+ #    configs = load_config(config_file, override)
+
+ #    mp.dps = dps
+
+ #    jobs = []
+ #    # create the jobs to run
+ #    for config in configs:
+ #        config["relaxation_time/threshold"] = threshold
+ #        jobs.append(multiprocessing.Process(target=relaxation_time_job, args=(config,)))
+ #    # run the jobs
+ #    for job in jobs:
+ #        job.start()
+ #    # wait on the jobs
+ #    for job in jobs:
+ #        job.join()
+
+
+# class ImpulseResponseProcess(parallel_jobs.JobProcess):
+ #    def run_job(self, config):
+ #        config_id = powerconf.utils.get_id(config)
+
+ #        G = greens_functions.MultiLayerGreensFunction(config.tree)
+ #        eval_times = compute_evaluation_times(config)
+ #        z = config.get("sensor/z", "0 um")
+ #        z = units.Q_(z).to("cm").magnitude
+ #        r = config.get("sensor/r", "0 um")
+ #        r = units.Q_(r).to("cm").magnitude
+
+ #        ctx = {
+ #            "config_id": config_id,
+ #            "c": config,
+ #        }
+
+ #        output_paths = {}
+ #        for k in ["simulation/output_file", "simulation/output_config_file"]:
+ #            filename = config.get(k, None)
+ #            output_paths[k + "_path"] = Path("/dev/stdout")
+ #            if filename is not None:
+ #                try:
+ #                    filename = filename.format(**ctx).replace(" ", "_")
+ #                except:
+ #                    raise RuntimeError(
+ #                        f"There was an error trying to generate output filename from template '{filename}'."
+ #                    )
+ #                path = Path(filename)
+ #                output_paths[k + "_path"] = path
+ #                if path.parent != Path():
+ #                    path.parent.mkdir(parents=True, exist_ok=True)
+
+ #        output_paths["simulation/output_config_file_path"].write_text(
+ #            yaml.dump(config.tree)
+ #        )
+
+ #        with output_paths["simulation/output_file_path"].open("w") as f:
+ #            for t in eval_times:
+ #                T = G(z, r, t)
+ #                f.write(f"{t} {T}\n")
+
+ #        self.status.emit("done.")
+
+
+# @app.command()
+# def impulse_response(
+ #    config_file: Path,
+ #    jobs: int = None,
+ #    dps: Annotated[
+ #        int,
+ #        typer.Option(help="The precision to use for calculations when mpmath is used."),
+ #    ] = 100,
+# ):
+ #    mp.dps = dps
+
+ #    configs = powerconf.yaml.powerload(config_file)
+ #    configs = powerconf.utils.apply_transform(
+ #        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
+ #    )
+ #    for config in configs:
+ #        if "/impulse_response/threshold" not in config:
+ #            config["/impulse_response/threshold"] = 0.01
+
+ #    if jobs is None or jobs > 1:
+ #        jobs = min(multiprocessing.cpu_count(), len(configs_to_run))
+ #        controller = parallel_jobs.Controller(ImpulseResponseProcess, jobs)
+ #        controller.run(configs)
+ #        controller.stop()
+ #    else:
+ #        p = ImpulseResponseProcess()
+ #        for config in configs:
+ #            p.run_job(config)
+
+ #    raise typer.Exit(0)
+
+
+
+# @app.command()
+# def config(
+ #    print_multiple_pulse_example_config: Annotated[
+ #        bool,
+ #        typer.Option(
+ #            help="Print an example configuration file for the multiple-pulse command and exit."
+ #        ),
+ #    ] = False,
+ #    print_temperature_rise_example_config: Annotated[
+ #        bool,
+ #        typer.Option(
+ #            help="Print an example configuration file for the temperature-rise command and exit."
+ #        ),
+ #    ] = False,
+# ):
+ #    """Various config file related task. i.e. print example config, etc."""
+ #    print("Under Developement")
+ #    return
+
+ #    if print_multiple_pulse_example_config:
+ #        config = fspathtree()
+ #        config["/input_file"] = "input/CW/Tvst.txt"
+ #        config["/output_file"] = "output/MP/{c[tau]}-{c[N]}-Tvst.txt"
+ #        config["/output_config_file"] = "output/MP/{c[tau]}-{c[N]}-CONFIG.yml"
+ #        config["/tau"] = "100 us"
+ #        config["/t0"] = "100 us"
+ #        config["/N"] = 100
+ #        print(yaml.dump(config.tree))
+ #        raise typer.Exit(1)
+
+ #    if print_temperature_rise_example_config:
+ #        config = fspathtree()
+ #        config["/thermal/k"] = "0.6306 W/m/K"
+ #        config["/thermal/rho"] = "992 kg/m^3"
+ #        config["/thermal/c"] = "4178 J /kg / K"
+ #        config["/layers/0/name"] = "RPE"
+ #        config["/layers/0/z0"] = "0 um"
+ #        config["/layers/0/d"] = "10 um"
+ #        config["/layers/0/mua"] = "720 1/cm"
+ #        config["/layers/1/name"] = "Choroid"
+ #        config["/layers/1/z0"] = "4 um"
+ #        config["/layers/1/d"] = "20 um"
+ #        config["/layers/1/mua"] = "140 1/cm"
+ #        config["/laser/E0"] = "1 W/cm^2"
+ #        config["/laser/D"] = "100 um"
+ #        config["/laser/profile"] = "flattop"
+ #        config["/sensor/z"] = "0 um"
+ #        config["/sensor/r"] = "0 um"
+ #        config["/temperature_rise/use_approximations"] = True
+ #        config["/temperature_rise/temperature_rise/method"] = "quad"
+ #        config["/temperature_rise/output_file"] = (
+ #            "output/CW/{c[/laser/D]}-{c[/sensor/r]}-Tvst.txt"
+ #        )
+ #        config["/temperature_rise/output_config_file"] = (
+ #            "output/CW/{c[/laser/D]}-{c[/sensor/r]}-CONFIG.yml"
+ #        )
+ #        config["/temperature_rise/time/dt"] = "1 us"
+ #        config["/temperature_rise/time/max"] = "10 ms"
+
+ #        print(yaml.dump(config.tree))
+ #        raise typer.Exit(1)
+
+
+
+# @app.command()
+# def multipulse_microcavitation_threshold(
+#     config_file: Path,
+#     dps: Annotated[
+#         int,
+#         typer.Option(help="The precision to use for calculations when mpmath is used."),
+#     ] = 100,
+#     override: Annotated[
+#         list[str],
+#         typer.Option(
+#             help="key=val string to override a configuration parameter. i.e. --parameter 'simulation/time/dt=2 us'"
+#         ),
+#     ] = [],
+# ):
+#     configs = load_config(config_file, override)
+#     mp.dps = dps
+
+#     for config in configs:
+#         T0 = config.get("baseline_temperature", "37 degC")
+#         toks = T0.split(maxsplit=1)
+#         T0 = units.Q_(float(toks[0]), toks[1]).to("K")
+#         Tnuc = config.get("microcavitation/Tnuc", "116 degC")
+#         toks = Tnuc.split(maxsplit=1)
+#         Tnuc = units.Q_(float(toks[0]), toks[1]).to("K")
+#         m = units.Q_(config.get("microcavitation/m", "-1 mJ/cm^2/K"))
+#         PRF = units.Q_(config.get("laser/PRF", "1 kHz"))
+#         t0 = 1 / PRF
+#         t0 = t0.to("s").magnitude
+#         N = 1000
+
+#         output_file = config.get("simulation/output_file", "Hth_vs_N.txt")
+
+#         config["laser/E0"] = "1 W/cm^2"  # override user power
+#         G = greens_functions.MultiLayerGreensFunction(config.tree)
+#         z = config.get("sensor/z", "0 um")
+#         z = units.Q_(z).to("cm").magnitude
+#         r = config.get("sensor/r", "0 um")
+#         r = units.Q_(r).to("cm").magnitude
+
+#         T = numpy.zeros([N])
+
+#         for i in range(1, len(T)):
+#             T[i] = T[i - 1] + G(z, r, t0 * i)
+
+#         with output_file.open("w") as f:
+#             for n in range(1, N):
+#                 H = (m * T0 - m * Tnuc) / (1 - m * units.Q_(T[n - 1], "K/(J/cm^2)"))
+#                 f.write(f"{n} {H}\n")
+
+
+
+
+
+
