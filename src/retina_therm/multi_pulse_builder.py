@@ -21,7 +21,7 @@ def is_resolution(x: numpy.array, res: float, tol: float = 1e-10):
     return False
 
 
-def regularize_grid(t, dt = None):
+def regularize_grid(t, dt=None):
     if dt is None:
         dt = t[1] - t[0]
     tmax = t[-1]
