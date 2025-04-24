@@ -1,3 +1,6 @@
+import os
+
+
 class SignalConnection:
     """A class for encapulating a signal/slot connection."""
 
@@ -53,7 +56,8 @@ class Signal:
             if _id not in self.__paused:
                 self.__slots[_id](*args, **kwargs)
 
+
 class CheckedSignal(Signal):
     """A signal that checks function signatures."""
-    pass
 
+    pass
