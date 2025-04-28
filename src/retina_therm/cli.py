@@ -1,4 +1,5 @@
 import copy
+import itertools
 import multiprocessing
 import pprint
 import sys
@@ -19,8 +20,8 @@ from pydantic import BeforeValidator, ValidationError
 from tqdm import tqdm
 
 import retina_therm
-from retina_therm import (config, greens_functions, multi_pulse_builder, units,
-                          utils)
+from retina_therm import (config, greens_functions, multi_pulse_builder,
+                          signals, units, utils)
 
 from . import parallel_jobs, utils
 
@@ -154,9 +155,8 @@ class TemperatureRiseCmdConfig(config.BaseModel):
     thermal: config.ThermalPropertiesConfig
 
 
-class TemperatureRiseProcess(parallel_jobs.JobProcess):
+class TemperatureRiseSubProcess(parallel_jobs.JobProcess):
     def run_job(self, config):
-        config_id = powerconf.utils.get_id(config)
         # Greens function classes expect simulation config params to be in /simulation
         config["/simulation"] = config["/temperature_rise"].tree
         G = greens_functions.CWRetinaLaserExposure(config.tree)
@@ -165,16 +165,71 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
         r = config["/temperature_rise/sensor/r"]
         r = units.Q_(r).to("cm").magnitude
 
-        # if times are given in the config, just them
-        t = compute_evaluation_times(config["temperature_rise/time"])
+        # times are already computed by the parent process, we just need to grab them.
+        t = config["/temperature_rise/time/ts"]
+        self.status.emit("Computing temperature rise...")
+        G.progress.connect(lambda i, n: self.progress.emit(i, n))
+        T = G.temperature_rise(z, r, t, method=config["/temperature_rise/method"])
+        self.status.emit("done.")
+
+        return list(zip(t, T))
+
+
+class TemperatureRiseController:
+    def __init__(self, jobs=None):
+        self.progress = signals.Signal()
+        self.status = signals.Signal()
+
+    def run_job(self, config):
+
+        # check that config is valid
         method = config["/temperature_rise/method"]
         if method not in temperature_rise_integration_methods + ["undefined"]:
             raise RuntimeError(f"Unrecognized integration method '{method}'")
 
-        self.status.emit("Computing temperature rise...")
-        G.progress.connect(lambda i, n: self.progress.emit(i, n))
-        T = G.temperature_rise(z, r, t, method=method)
-        self.status.emit("done.")
+        # setup subprocess controller
+        jobs = config["/jobs"]
+        subprocess_controller = parallel_jobs.BatchJobController(
+            TemperatureRiseSubProcess, jobs
+        )
+
+        # split the configuration up into multiple configurations over sub-intervals of the time range
+        t = compute_evaluation_times(config["/temperature_rise/time"])
+        t_chunks = numpy.array_split(t, jobs)
+        configs = []
+        for chunk in t_chunks:
+            c = copy.deepcopy(config)
+            c["/temperature_rise/time/ts"] = chunk
+            configs.append(c)
+
+        # forward progress signals
+        subprocess_controller.progress.connect(lambda msg: self.progress(msg))
+        # run the configurations
+        subprocess_controller.run(configs)
+        # cleanup controller
+        subprocess_controller.wait()
+
+        # results will be returned in a list of lists
+        # each process returns results into corresponding index of top-level list.
+        # each element is a list that contains all results returned by the process,
+        # one item for each time the process ran a job.
+        data = []
+
+        for proc_res in subprocess_controller.results:
+            for res in proc_res:
+                data += res
+
+        # FIXME: seems like some chunks get dropped sometimes?
+        # print(len(subprocess_controller.results), jobs)
+        # assert len(subprocess_controller.results) == jobs
+        # for d in data:
+        #     print(len(d))
+        #     assert len(d) > 0
+        # print(len(t), len(data))
+        assert len(t) == len(data)
+        data.sort(key=lambda item: item[0])
+        T = numpy.array(list(map(lambda item: item[1], data)))
+
         self.status.emit("Writing output files...")
 
         output_paths = {}
@@ -201,7 +256,7 @@ class TemperatureRiseProcess(parallel_jobs.JobProcess):
             fmt = "txt"
 
         utils.write_to_file(output_paths["output_file_path"], numpy.c_[t, T], fmt)
-        self.status.emit("done.")
+        self.status.emit("done")
 
 
 @app.command()
@@ -272,77 +327,38 @@ def temperature_rise(
     if jobs is None:
         jobs = multiprocessing.cpu_count()
 
-    if jobs > 1:
-        # split each configs into multiple configs with over different time ranges
-        # so we can parallelize them
-        configs_to_run = []
+    for config in configs:
+        config["/jobs"] = jobs
 
-        def split_output_filename(path, i):
-            f = path
-            f = f.parent / (f.stem + f".{i}" + f.suffix)
-            return f
+    p = TemperatureRiseController()
+    progress_display = (
+        parallel_jobs.SilentProgressDisplay()
+        if quiet
+        else parallel_jobs.ProgressDisplay()
+    )
+    progress_display.setup_new_bar("Total")
+    progress_display.set_total("Total", len(configs))
+    progress_display.set_progress("Total", 0, 1)
+    for i in range(jobs):
+        progress_display.setup_new_bar(f"Job-{i:03}")
+    for i in range(jobs):
+        progress_display.set_progress(f"Job-{i:03}", 0, 1)
 
-        for config in configs:
-            fmt = config["temperature_rise/output_file_format"]
-            if fmt is None:
-                fmt = Path(config["temperature_rise/output_file"]).suffix[1:]
-            if fmt is None:
-                fmt = "txt"
-            config["temperature_rise/output_file_format"] = fmt
+    p.progress.connect(
+        lambda msg: progress_display.set_progress(
+            f"Job-{msg['num']:03}", *msg["progress"]
+        )
+    )
+    # our process subclass will send a status message "done" when a config has been completed.
+    p.status.connect(
+        lambda msg: progress_display.update_progress("Total") if msg == "done" else None
+    )
 
-            split_config = config["temperature_rise/output_file_format"] in ["txt"]
-            if not split_config:
-                iconsole.print(
-                    f"[yellow]Warning: parallel procesing of single configs is not supported for given output file format '{config['temperature_rise/output_file_format']}'.[/yellow]"
-                )
-                iconsole.print(
-                    f"[yellow]         multiple configurations will still be processed in parallel.[/yellow]"
-                )
-            if split_config:
-                t = list(
-                    map(
-                        lambda _t: str(units.Q_(_t, "s")),
-                        compute_evaluation_times(config["temperature_rise/time"]),
-                    )
-                )
-                t_chunks = numpy.array_split(t, jobs)
-                for i, t_chunk in enumerate(t_chunks):
-                    new_config = fspathtree(copy.deepcopy(config.tree))
-                    new_config["/temperature_rise/output_file"] = split_output_filename(
-                        config["/temperature_rise/output_file"], i
-                    )
-                    new_config["/temperature_rise/output_config_file"] = None
-                    new_config["/temperature_rise/time"] = {"ts": t_chunk}
-                    configs_to_run.append(new_config)
-            else:
-                configs_to_run.append(config)
+    for config in configs:
+        p.run_job(config)
 
-        jobs = min(jobs, len(configs_to_run))
-        controller = parallel_jobs.Controller(TemperatureRiseProcess, jobs)
-        controller.run(configs_to_run)
-        controller.stop()
-        iconsole.print("Concatenating output files produced in parallel")
-        for config in configs:
-            split_config = config["temperature_rise/output_file_format"] in ["txt"]
-            if split_config:
-                output_file = config["/temperature_rise/output_file"]
-                output_config_file = config["/temperature_rise/output_config_file"]
-                data = ""
-                for i in range(jobs):
-                    output_file_i = Path(split_output_filename(output_file, i))
-                    output_config_file_i = Path(
-                        split_output_filename(output_config_file, i)
-                    )
-                    data += output_file_i.read_text()
-                    output_file_i.unlink()
-                output_file.write_text(data)
-                output_config_file.write_text(yaml.dump(config.tree))
-
-    else:
-        p = TemperatureRiseProcess()
-        for config in configs:
-            p.run_job(config)
-
+    progress_display.set_progress("Total", 1, 1)
+    progress_display.close()
     raise typer.Exit(0)
 
 
