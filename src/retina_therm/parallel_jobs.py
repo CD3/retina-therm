@@ -28,10 +28,9 @@ class JobProcess(multiprocessing.Process):
         raise TypeError(f"run_job(...) method MUST be implemented by derived class.")
 
     def __init__(self):
-        super().__init__()
+        super().__init__()  # runs in both PARENT and CHILE before fork occurs.
         # create pipes to communicate between child and parent procs
-        self.parent_ctrl_conn, self.child_ctrl_conn = multiprocessing.Pipe()
-        self.parent_data_conn, self.child_data_conn = multiprocessing.Pipe(duplex=False)
+        self.parent_link, self.child_link = multiprocessing.Pipe()
 
         # create signals that the implementation class can use
         # for communicating with the parent process.
@@ -39,46 +38,57 @@ class JobProcess(multiprocessing.Process):
         self.status = Signal()
         self.result = Signal()
 
-    def run(self):  # REQUIRED: we must implement this to hook into multiprocessing
-        # this runs in the CHILD process
+        # signals for RPC comms
+        self.call = Signal()
+        self.reply = Signal()
+
+    def run(self):  # runs in CHILD
+        # REQUIRED: we must implement this to hook into multiprocessing
         # it is automatically ran by the multirpocessing library
         #
         # we are basically running a job sever. we get job descriptions
-        # (objects) from the parent through the self.child_ctrl_conn pipe and
-        # pass the description to the self.run_job(...) method until
-        # we recieve a message "quit".
-        #
+        # (objects) from the parent out of the self.child_link pipe and
+        # pass the description to the self.run_job(...) method until.
+        # when the job is done, we send the result back over through the self.child_link pipe
+        # and then send a reply message "finished", also over the self.child_link pipe.
+        # we do this until we recieve a "stop" message from the parent.
+
         # setup the progress, status, and result signals to send messages to the parrent proc
-        # through the data pipe.
+        # through the pipe.
         self.progress.connect(
-            lambda i, n: self.child_data_conn.send(
-                {"type": "progress", "payload": [i, n]}
-            )
+            lambda i, n: self.child_link.send({"type": "progress", "payload": [i, n]})
         )
         self.status.connect(
-            lambda msg: self.child_data_conn.send({"type": "status", "payload": msg})
+            lambda msg: self.child_link.send({"type": "status", "payload": msg})
         )
         self.result.connect(
-            lambda obj: self.child_data_conn.send({"type": "result", "payload": obj})
+            lambda obj: self.child_link.send({"type": "result", "payload": obj})
+        )
+
+        # setup reply signal to send RPC messages back to the parent process.
+        self.reply.connect(
+            lambda msg: self.child_link.send({"type": "reply", "payload": msg})
         )
 
         active = True
         while active:
             # wait for a message containing the job description
-            msg = self.child_ctrl_conn.recv()
-            if msg == "quit":
-                active = False
-            else:
-                try:
-                    result = self.run_job(msg)
-                    self.result.emit(result)
-                    self.child_ctrl_conn.send("finished")
-                except Exception as e:
-                    self.status.emit(f"ERROR: exception thrown while running job: {e}.")
-                    self.child_ctrl_conn.send("finished")
+            msg = self.child_link.recv()
+            if msg["type"] == "call":
+                if msg["payload"] == "stop":
+                    active = False
+                else:
+                    try:
+                        result = self.run_job(msg["payload"])
+                        self.result.emit(result)
+                        self.reply.emit("finished")
+                    except Exception as e:
+                        self.status.emit(
+                            f"ERROR: exception thrown while running job: {e}."
+                        )
+                        self.reply.emit("finished")
 
-    async def process_jobs(self, config_queue):
-        # this runs in the parent process
+    async def run_jobs(self, config_queue):  # runs in PARENT
         # it is async because we need to monitor several different pipes
         # used to communicate with the child proces.
         self.shutdown = False
@@ -90,12 +100,15 @@ class JobProcess(multiprocessing.Process):
         # if so, do we need to make sure that the control messages are handedl _last_
         # so that we don't get a "finished" message from the child and
         # and then shutdown before the result is processed.
-        dh = asyncio.create_task(self.handle_data_messages())
-        ch = asyncio.create_task(self.handle_ctrl_messages())
+        message_handler = asyncio.create_task(self.handle_messages())
+
+        self.call.connect(
+            lambda msg: self.parent_link.send({"type": "call", "payload": msg})
+        )
 
         while len(config_queue):
             # make sure we don't wait here
-            self.parent_ctrl_conn.send(config_queue.pop())
+            self.call.emit(config_queue.pop())
             self.busy = True
 
             # while we don't' get any "race conditions"
@@ -114,30 +127,19 @@ class JobProcess(multiprocessing.Process):
         # allow one more call of the handlers
         await asyncio.sleep(0)
         self.shutdown = True
-        self.parent_ctrl_conn.send("quit")
+        self.call.emit("stop")
 
-        await dh
-        await ch
+        await message_handler
 
-    async def handle_ctrl_messages(self):
-        # this runs in the parent process
-        # we monitor a pipe for messages from a child
+    async def handle_messages(self):  # runs in PARENT
         while not self.shutdown:
-            if self.parent_ctrl_conn.poll():
-                msg = self.parent_ctrl_conn.recv()
-                if msg == "finished":
-                    self.busy = False
-            await asyncio.sleep(0)  # this is how we yield control to the scheduler
-
-    async def handle_data_messages(self):
-        # this runs in the parent process
-        while not self.shutdown:
-            if self.parent_data_conn.poll():
-                msg = self.parent_data_conn.recv()
+            if self.parent_link.poll():
+                msg = self.parent_link.recv()
                 if "type" not in msg or msg["type"] not in [
                     "progress",
                     "status",
                     "result",
+                    "reply",
                 ]:
                     raise RuntimeError(
                         "Recieved unknown message type from child over data pipe:", msg
@@ -148,6 +150,10 @@ class JobProcess(multiprocessing.Process):
                     self.status.emit(msg["payload"])
                 if msg["type"] == "result":
                     self.result.emit(msg["payload"])
+                if msg["type"] == "reply":
+                    if msg["payload"] == "finished":
+                        self.busy = False
+
             await asyncio.sleep(0)  # this is how we yield control to the scheduler
 
 
@@ -270,7 +276,7 @@ class BatchJobController:
         # get several long running jobs while the others got short jobs,
         # and we would end up waiting on a single proc.
         tasks = [
-            self.event_loop.create_task(p.process_jobs(configs)) for p in self.job_procs
+            self.event_loop.create_task(p.run_jobs(configs)) for p in self.job_procs
         ]
         self.event_loop.run_until_complete(asyncio.gather(*tasks))
         for t in tasks:
@@ -282,5 +288,5 @@ class BatchJobController:
 
     def stop(self):
         for p in self.job_procs:
-            p.parent_ctrl_conn.send("quit")
+            p.call.emit("stop")
         self.wait()
