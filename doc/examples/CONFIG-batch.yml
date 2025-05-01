@@ -1,3 +1,23 @@
+batch:
+  cw:
+    one_over_e_radius:
+      '@batch':
+        - 10 um
+        - 20 um
+        - 50 um
+        - 100 um
+  mp:
+    N:
+      '@batch':
+        - 1
+        - 2
+        - 4
+    
+
+id:
+  cw: $( get_id( ${/batch/cw} ))
+  mp: $( get_id( ${/batch/mp} ))
+
 thermal:
     k: 1.5e-3 cal / K / s / cm
     rho: 1 g/cm^3
@@ -19,7 +39,6 @@ laser:
   wavelength: 700 nm
   duration: 10 s
   E0: 1 cal/s/cm^2
-  R: 10 um
   irradiance: 1 cal/s/cm^2
   one_over_e_radius: 10 um
 
@@ -31,13 +50,13 @@ temperature_rise:
     max: 100 ms
     resolution: 100 us
     dt: 100 us
-  output_file : output-simple/CW/Tvst-$(${/laser/one_over_e_radius}).txt
-  output_config_file : output-simple/CW/CONFIG-$(${/laser/one_over_e_radius}).txt
+  output_file : output-batch/CW/Tvst-$(${/id/cw}).txt
+  output_config_file : output-batch/CW/CONFIG-$(${/id/cw}).txt
 
 multiple_pulse:
   input_file: $(${/temperature_rise/output_file})
-  output_file: $(${/temperature_rise/output_file}.replace("CW","MP"))
-  output_config_file: $(${/temperature_rise/output_config_file}.replace("CW","MP"))
+  output_file : output-batch/MP/Tvst-$(${/id/mp}).txt
+  output_config_file : output-batch/MP/CONFIG-$(${/id/mp}).txt
   time:
     resolution: 200 us
     max: 75 ms

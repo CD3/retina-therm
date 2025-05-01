@@ -22,5 +22,5 @@ temperature_rise:
   time:
     max: 1 s
     resolution: 10 us
-  output_file : mainster-output/Tvst-$(${/laser/one_over_e_radius}).txt
-  output_config_file : mainster-output/CONFIG-$(${/laser/one_over_e_radius}).txt
+  output_file : output-mainster/Tvst-$(${/laser/one_over_e_radius}).txt
+  output_config_file : output-mainster/CONFIG-$(${/laser/one_over_e_radius}).txt
