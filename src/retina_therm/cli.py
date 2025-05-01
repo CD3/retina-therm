@@ -1,3 +1,4 @@
+import importlib
 import copy
 import itertools
 import multiprocessing
@@ -10,8 +11,6 @@ import numpy
 import powerconf
 import rich
 import scipy
-import tissue_properties.optical.absorption_coefficient.schulmeister
-import tissue_properties.optical.ocular_transmission.schulmeister
 import typer
 import yaml
 from fspathtree import fspathtree
@@ -25,30 +24,27 @@ from retina_therm import (config, greens_functions, multi_pulse_builder,
 
 from . import parallel_jobs, utils
 
+__version__ = importlib.metadata.version("powerconf")
+
+
 app = typer.Typer()
 console = rich.console.Console()
 
 
-invoked_subcommand = None
-config_filename_stem = None
 
 
-class models:
-    class schulmeister:
-        class mua:
-            RPE = tissue_properties.optical.absorption_coefficient.schulmeister.RPE()
-            HenlesFiberLayer = (
-                tissue_properties.optical.absorption_coefficient.schulmeister.HenlesFiberLayer()
-            )
-            Choroid = (
-                tissue_properties.optical.absorption_coefficient.schulmeister.Choroid()
-            )
-
+def version_callback(value: bool):
+    if value:
+        typer.echo(f"retina-therm: {__version__}")
+        raise typer.Exit()
 
 @app.callback()
-def main(ctx: typer.Context):
-    global invoked_subcommand
-    invoked_subcommand = ctx.invoked_subcommand
+def main( ctx: typer.Context,
+    version: bool = typer.Option(None, "--version", callback=version_callback, is_eager=True),
+):
+    pass
+
+
 
 
 def compute_evaluation_times(config):
