@@ -1,5 +1,5 @@
-import importlib
 import copy
+import importlib
 import itertools
 import multiprocessing
 import pprint
@@ -31,20 +31,20 @@ app = typer.Typer()
 console = rich.console.Console()
 
 
-
-
 def version_callback(value: bool):
     if value:
         typer.echo(f"retina-therm: {__version__}")
         raise typer.Exit()
 
+
 @app.callback()
-def main( ctx: typer.Context,
-    version: bool = typer.Option(None, "--version", callback=version_callback, is_eager=True),
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        None, "--version", callback=version_callback, is_eager=True
+    ),
 ):
     pass
-
-
 
 
 def compute_evaluation_times(config):
@@ -151,7 +151,16 @@ class TemperatureRiseCmdConfig(config.BaseModel):
     thermal: config.ThermalPropertiesConfig
 
 
-class TemperatureRiseSubProcess(parallel_jobs.JobProcess):
+class TemperatureRiseGreensFunctionProcess(parallel_jobs.JobProcessorBase):
+    """
+    For running green's functino calculations in a separate process.
+
+    This will return time-temperature pairs, it will _not_ write to files.
+    """
+
+    def __init__(self):
+        super().__init__()
+
     def run_job(self, config):
         # Greens function classes expect simulation config params to be in /simulation
         config["/simulation"] = config["/temperature_rise"].tree
@@ -163,67 +172,86 @@ class TemperatureRiseSubProcess(parallel_jobs.JobProcess):
 
         # times are already computed by the parent process, we just need to grab them.
         t = config["/temperature_rise/time/ts"]
-        self.status.emit("Computing temperature rise...")
+        self.status.emit("Computing temperature rise")
         G.progress.connect(lambda i, n: self.progress.emit(i, n))
         T = G.temperature_rise(z, r, t, method=config["/temperature_rise/method"])
-        self.status.emit("done.")
+        self.status.emit("done")
 
         return list(zip(t, T))
 
 
-class TemperatureRiseController:
-    def __init__(self, jobs=None):
-        self.progress = signals.Signal()
-        self.status = signals.Signal()
+class TemperatureRiseSingleConfigProcess(parallel_jobs.JobProcessorBase):
+    """
+    For running a full simulation in a separate process.
 
-    def run_job(self, config):
+    This uses the TemperatureRiseGreensFunctionProcess class to do the acual
+    calculations, collects the time-temperature pairs and writes them to the
+    output_file given in the configuration. Also writes the output_config_file.
+    """
 
-        # check that config is valid
-        method = config["/temperature_rise/method"]
-        if method not in temperature_rise_integration_methods + ["undefined"]:
-            raise RuntimeError(f"Unrecognized integration method '{method}'")
+    def __init__(self, njobs=1):
+        super().__init__()
+        self.njobs = njobs
+        self.controller = None
 
-        # setup subprocess controller
-        jobs = config["/jobs"]
-        subprocess_controller = parallel_jobs.BatchJobController(
-            TemperatureRiseSubProcess, jobs
+    def _start(self):  # Runs in CHILD
+        if self.controller is None:
+            self.controller = parallel_jobs.BatchJobController(
+                TemperatureRiseGreensFunctionProcess, njobs=self.njobs
+            )
+            self.controller.start()
+        self.jobs_progress = [[0, 1]] * self.njobs
+        self.total_progress = [0, 1]
+
+        def update_jobs_progress(proc, prog):
+            self.jobs_progress[proc] = prog
+
+        def compute_total_progress():
+            a = 0
+            b = 0
+            for p in self.jobs_progress:
+                a += p[0]
+                b += p[1]
+            return [a, b]
+
+        # self.controller.status.connect(
+        #     lambda proc, msg: parallel_jobs.pprint(">>>>", msg)
+        # )
+        self.controller.progress.connect(
+            lambda proc, prog: update_jobs_progress(proc, prog)
         )
+        self.controller.progress.connect(
+            lambda *args: self.progress.emit(*compute_total_progress())
+        )
+
+    def _stop(self):  # Runs in CHILD
+        if self.controller is not None:
+            self.controller.stop()
+            self.controller.wait()
+
+    def run_job(self, config):  # Runs in CHILD
 
         # split the configuration up into multiple configurations over sub-intervals of the time range
         t = compute_evaluation_times(config["/temperature_rise/time"])
-        t_chunks = numpy.array_split(t, jobs)
+        t_chunks = numpy.array_split(t, self.njobs)
         configs = []
         for chunk in t_chunks:
             c = copy.deepcopy(config)
             c["/temperature_rise/time/ts"] = chunk
             configs.append(c)
 
-        # forward progress signals
-        subprocess_controller.progress.connect(lambda msg: self.progress(msg))
-        # run the configurations
-        subprocess_controller.run(configs)
-        # cleanup controller
-        subprocess_controller.wait()
+        # run the configurations, blocking
+        results = self.controller.run_jobs(configs)
 
         # results will be returned in a list of lists
         # each process returns results into corresponding index of top-level list.
         # each element is a list that contains all results returned by the process,
         # one item for each time the process ran a job.
-        data = []
-
-        for proc_res in subprocess_controller.results:
-            for res in proc_res:
-                data += res
-
-        # FIXME: seems like some chunks get dropped sometimes?
-        # print(len(subprocess_controller.results), jobs)
-        # assert len(subprocess_controller.results) == jobs
-        # for d in data:
-        #     print(len(d))
-        #     assert len(d) > 0
-        # print(len(t), len(data))
-        assert len(t) == len(data)
-        data.sort(key=lambda item: item[0])
+        data = list(itertools.chain(*results))
+        if len(t) != len(data):  # sanity check...
+            raise RuntimeError(
+                f"Something went wrong. The number of computed temperature returned by subprocesses ({len(data)}) does not match the number of time points ({len(t)})"
+            )
         T = numpy.array(list(map(lambda item: item[1], data)))
 
         self.status.emit("Writing output files...")
@@ -258,7 +286,7 @@ class TemperatureRiseController:
 @app.command()
 def temperature_rise(
     config_file: Path,
-    jobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
+    njobs: Annotated[str, typer.Option(help="Number of parallel jobs to run.")] = None,
     dps: Annotated[
         int,
         typer.Option(help="The precision to use for calculations when mpmath is used."),
@@ -292,7 +320,6 @@ def temperature_rise(
 
         econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
         raise typer.Exit(1)
-    # TODO: remove duplicate configurations
 
     # we need to convert all quantities to strings before we pass
     # them to the implementation classes. they do validation based on
@@ -305,8 +332,11 @@ def temperature_rise(
     # validate configs
     for i, config in enumerate(configs):
         try:
+            # validate the input config using pydantic model
             config = TemperatureRiseCmdConfig(**config.tree)
+            # copy model back to config so that default values will be filled in
             configs[i] = fspathtree(config.model_dump())
+
         except ValidationError as e:
             econsole.print(
                 "[red]There was an error reading the configuration file.[/red]"
@@ -316,19 +346,46 @@ def temperature_rise(
             econsole.print("\n\n")
             raise typer.Exit(1)
 
-    if len(configs) == 0:
-        iconsole.print("[orange]No configurations matched list of IDs to run[/orange]")
-    if len(configs) > 1:
-        # disable printing status information when we are processing multiple configurations
-        console.print = lambda *args, **kwargs: None
-
-    if jobs is None:
-        jobs = multiprocessing.cpu_count()
-
+    # filter repeated configs
+    # this allows a configuration file to contain configs for multiple commands
+    # (i.e. temperature-rise and multiple-pulse) with batch parameters. If a batch
+    # parameter for a different command configuration producec multiple config instances,
+    # but they are all the same for this command, we only want to run one
+    configs_to_run = []
+    config_ids = []
     for config in configs:
-        config["/jobs"] = jobs
+        if powerconf.utils.get_id(config) not in config_ids:
+            configs_to_run.append(config)
+            config_ids.append(powerconf.utils.get_id(config))
 
-    p = TemperatureRiseController()
+    if len(configs_to_run) != len(configs):
+        iconsole.print(
+            "WARNING: There duplicate configurations that will be skipped. If you did not expect this, check that your batch configurations render to different instances."
+        )
+        configs = configs_to_run
+
+    # determine how to split up work.
+    # we have a TemperatureRiseSingleConfigProcess that runs a single simulation.
+    # internally, it will split the work up into chunks and use subprocesses to do the computation.
+    num_jobs = multiprocessing.cpu_count()
+    num_main_jobs = len(configs)
+    num_sub_jobs = int(num_jobs / num_main_jobs)
+
+    if njobs is not None:
+        if ":" in njobs:
+            num_main_jobs, num_sub_jobs = list(map(int, njobs.split(":")))
+        else:
+            num_jobs = int(njobs)
+            num_main_jobs = len(configs)
+            num_sub_jobs = int(num_jobs / num_main_jobs)
+
+    controller = parallel_jobs.BatchJobController(
+        TemperatureRiseSingleConfigProcess,
+        njobs=num_main_jobs,
+        args={"njobs": num_sub_jobs},
+    )
+    controller.start()
+
     progress_display = (
         parallel_jobs.SilentProgressDisplay()
         if quiet
@@ -336,27 +393,26 @@ def temperature_rise(
     )
     progress_display.setup_new_bar("Total")
     progress_display.set_total("Total", len(configs))
-    progress_display.set_progress("Total", 0, 1)
-    for i in range(jobs):
+    for i in range(num_main_jobs):
         progress_display.setup_new_bar(f"Job-{i:03}")
-    for i in range(jobs):
+    for i in range(num_main_jobs):
         progress_display.set_progress(f"Job-{i:03}", 0, 1)
 
-    p.progress.connect(
-        lambda msg: progress_display.set_progress(
-            f"Job-{msg['num']:03}", *msg["progress"]
+    controller.progress.connect(
+        lambda proc, prog: progress_display.set_progress(f"Job-{proc:03}", *prog)
+    )
+    controller.status.connect(
+        lambda proc, msg: (
+            progress_display.update_progress("Total") if msg == "done" else None
         )
     )
-    # our process subclass will send a status message "done" when a config has been completed.
-    p.status.connect(
-        lambda msg: progress_display.update_progress("Total") if msg == "done" else None
-    )
 
-    for config in configs:
-        p.run_job(config)
+    # controller.status.connect(lambda *args: print("STATUS", args))
+    # controller.progress.connect(lambda *args: print("PROGRESS", args))
+    results = controller.run_jobs(configs)
+    controller.stop()
+    controller.wait()
 
-    progress_display.set_progress("Total", 1, 1)
-    progress_display.close()
     raise typer.Exit(0)
 
 
@@ -392,7 +448,7 @@ class MultiplePulseCmdConfig(config.BaseModel):
     multiple_pulse: MultiplePulseConfig
 
 
-class MultiplePulseProcess(parallel_jobs.JobProcess):
+class MultiplePulseProcess(parallel_jobs.JobProcessorBase):
     def run_job(self, config):
         self.status.emit(
             "Loading base temperature history for building multiple-pulse history."
@@ -478,13 +534,13 @@ class MultiplePulseProcess(parallel_jobs.JobProcess):
             fmt = "txt"
 
         utils.write_to_file(output_paths["output_file_path"], data, fmt)
-        self.status.emit("done.")
+        self.status.emit("done")
 
 
 @app.command()
 def multiple_pulse(
     config_file: Path,
-    jobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
+    njobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
     verbose: Annotated[bool, typer.Option(help="Print extra information")] = False,
     quiet: Annotated[bool, typer.Option(help="Don't print to console.")] = False,
 ):
@@ -528,27 +584,46 @@ def multiple_pulse(
         # disable printing status information when we are processing multiple configurations
         console.print = lambda *args, **kwargs: None
 
-    if jobs is None or jobs > 1:
-        jobs = min(multiprocessing.cpu_count(), len(configs_to_run))
-        controller = parallel_jobs.BatchJobController(MultiplePulseProcess, jobs)
-        controller.run(configs_to_run)
-        controller.stop()
-    else:
-        p = MultiplePulseProcess()
-        with tqdm(total=len(configs_to_run)) as pbar:
-            for config in configs_to_run:
-                try:
-                    p.run_job(config)
-                except Exception as e:
-                    print("An exception was thrown rile running config")
-                    print(config.tree)
-                    raise e
-                pbar.update(1)
+    njobs = min(multiprocessing.cpu_count(), len(configs_to_run))
+    controller = parallel_jobs.BatchJobController(MultiplePulseProcess, njobs=njobs)
+    controller.start()
+
+    progress_display = (
+        parallel_jobs.SilentProgressDisplay()
+        if quiet
+        else parallel_jobs.ProgressDisplay()
+    )
+    progress_display.setup_new_bar("Total")
+    progress_display.set_total("Total", len(configs))
+    for i in range(njobs):
+        progress_display.setup_new_bar(f"Job-{i:03}")
+    for i in range(njobs):
+        progress_display.set_progress(f"Job-{i:03}", 0, 1)
+
+    controller.progress.connect(
+        lambda proc, prog: progress_display.set_progress(f"Job-{proc:03}", *prog)
+    )
+    controller.status.connect(
+        lambda proc, msg: (
+            progress_display.set_progress(f"Job-{proc:03}", 1, 1)
+            if msg == "done"
+            else None
+        )
+    )
+    controller.status.connect(
+        lambda proc, msg: (
+            progress_display.update_progress("Total") if msg == "done" else None
+        )
+    )
+
+    controller.run_jobs(configs_to_run)
+    controller.stop()
+    controller.wait()
 
     raise typer.Exit(0)
 
 
-class TruncateTemperatureProfileProcess(parallel_jobs.JobProcess):
+class TruncateTemperatureProfileProcess(parallel_jobs.JobProcessorBase):
     def run_job(self, config):
         file = config["file"]
         threshold = config["threshold"]
@@ -671,7 +746,7 @@ def truncate_temperature_history_file(
 #    data = utils.write_Tvst_to_file(data, output_file, output_format)
 
 
-# class RelaxationTimeProcess(parallel_jobs.JobProcess):
+# class RelaxationTimeProcess(parallel_jobs.JobProcessorBase):
 #    def run_job(self, config):
 #        G = greens_functions.MultiLayerGreensFunction(config.tree)
 #        threshold = config["relaxation_time/threshold"]
@@ -735,7 +810,7 @@ def truncate_temperature_history_file(
 #        job.join()
 
 
-# class ImpulseResponseProcess(parallel_jobs.JobProcess):
+# class ImpulseResponseProcess(parallel_jobs.JobProcessorBase):
 #    def run_job(self, config):
 #        config_id = powerconf.utils.get_id(config)
 

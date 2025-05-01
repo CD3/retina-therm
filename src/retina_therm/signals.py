@@ -45,6 +45,9 @@ class Signal:
         self.__slots = dict()  # Python 3.7 declates dict() to be _ordered_
         self.__paused = set()
 
+    def num_slots(self):
+        return len(self.__slots)
+
     def emit(self, *args, **kwargs):
         self(*args, **kwargs)
 

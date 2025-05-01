@@ -6,6 +6,22 @@ run-simple-cw:
 run-simple-mp:
   uv run retina-therm multiple-pulse  CONFIG-simple.yml
 
+run-batch:
+  just run-batch-cw
+  just run-batch-mp
+run-batch-cw:
+  uv run retina-therm temperature-rise  CONFIG-batch.yml
+run-batch-mp:
+  uv run retina-therm multiple-pulse  CONFIG-batch.yml
+
+run-large_batch:
+  just run-large_batch-cw
+  just run-large_batch-mp
+run-large_batch-cw:
+  uv run retina-therm temperature-rise  CONFIG-large_batch.yml
+run-large_batch-mp:
+  uv run retina-therm multiple-pulse  CONFIG-large_batch.yml
+
 run-mainster:
   just run-mainster-cw
   just run-mainster-mp

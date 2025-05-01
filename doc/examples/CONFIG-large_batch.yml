@@ -6,6 +6,23 @@ batch:
         - 20 um
         - 50 um
         - 100 um
+        - 200 um
+        - 500 um
+        - 1000 um
+    wavelength:
+      '@batch':
+        - 400 nm
+        - 450 nm
+        - 500 nm
+        - 550 nm
+        - 600 nm
+        - 650 nm
+        - 700 nm
+        - 750 nm
+        - 800 nm
+        - 850 nm
+        - 900 nm
+        - 950 nm
   mp:
     tau: 10 ms
     t0: 20 ms
@@ -40,9 +57,8 @@ layers:
 laser:
   wavelength: 700 nm
   duration: 10 s
-  E0: 1 cal/s/cm^2
   irradiance: 1 cal/s/cm^2
-  one_over_e_radius: $(${/batch/cw/one_over_e_radius})
+  one_over_e_radius: 10 um
 
 temperature_rise:
   sensor:
@@ -50,14 +66,15 @@ temperature_rise:
     r: 0 um
   time:
     max: 100 ms
-    resolution: 10 us
-  output_file : output-batch/CW/Tvst-$(${/id/cw}).txt
-  output_config_file : output-batch/CW/CONFIG-$(${/id/cw}).txt
+    resolution: 100 us
+    dt: 100 us
+  output_file : output-large_batch/CW/Tvst-$(${/id/cw}).txt
+  output_config_file : output-large_batch/CW/CONFIG-$(${/id/cw}).txt
 
 multiple_pulse:
   input_file: $(${/temperature_rise/output_file})
-  output_file : output-batch/MP/Tvst-$(${/id/mp}).txt
-  output_config_file : output-batch/MP/CONFIG-$(${/id/mp}).txt
+  output_file : output-large_batch/MP/Tvst-$(${/id/mp}).txt
+  output_config_file : output-large_batch/MP/CONFIG-$(${/id/mp}).txt
   time:
     resolution: 200 us
     max: 75 ms
