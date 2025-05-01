@@ -296,6 +296,8 @@ def temperature_rise(
 
         econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
         raise typer.Exit(1)
+    # TODO: remove duplicate configurations
+
     # we need to convert all quantities to strings before we pass
     # them to the implementation classes. they do validation based on
     # string representations
@@ -532,7 +534,7 @@ def multiple_pulse(
 
     if jobs is None or jobs > 1:
         jobs = min(multiprocessing.cpu_count(), len(configs_to_run))
-        controller = parallel_jobs.Controller(MultiplePulseProcess, jobs)
+        controller = parallel_jobs.BatchJobController(MultiplePulseProcess, jobs)
         controller.run(configs_to_run)
         controller.stop()
     else:
