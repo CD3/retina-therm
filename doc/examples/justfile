@@ -10,17 +10,17 @@ run-batch:
   just run-batch-cw
   just run-batch-mp
 run-batch-cw:
-  uv run retina-therm temperature-rise  CONFIG-batch.yml
+  uv run retina-therm temperature-rise  CONFIG-batch.yml --skip-existing-outputs
 run-batch-mp:
-  uv run retina-therm multiple-pulse  CONFIG-batch.yml
+  uv run retina-therm multiple-pulse  CONFIG-batch.yml --skip-existing-outputs
 
 run-large_batch:
   just run-large_batch-cw
   just run-large_batch-mp
 run-large_batch-cw:
-  uv run retina-therm temperature-rise  CONFIG-large_batch.yml
+  uv run retina-therm temperature-rise  CONFIG-large_batch.yml --skip-existing-outputs
 run-large_batch-mp:
-  uv run retina-therm multiple-pulse  CONFIG-large_batch.yml
+  uv run retina-therm multiple-pulse  CONFIG-large_batch.yml --skip-existing-outputs
 
 run-mainster:
   just run-mainster-cw
@@ -37,3 +37,6 @@ run-mainster-batch-cw:
   uv run retina-therm temperature-rise  CONFIG-mainster-batch.yml
 run-mainster-batch-mp:
   uv run retina-therm multiple-pulse  CONFIG-mainster-batch.yml
+
+clean:
+  rm output-* -r

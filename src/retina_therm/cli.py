@@ -231,6 +231,26 @@ class TemperatureRiseSingleConfigProcess(parallel_jobs.JobProcessorBase):
 
     def run_job(self, config):  # Runs in CHILD
 
+        # check if output files exist
+        output_paths = {}
+        for k in [
+            "output_file",
+            "output_config_file",
+        ]:
+            filename = config["/temperature_rise"][k]
+            if filename is not None:
+                path = Path(filename)
+                output_paths[k + "_path"] = path
+                if path.parent != Path():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                output_paths[k + "_path"] = None
+
+        if config.get("/skip_existing_outputs", False):
+            if all(map(lambda k: output_paths[k].exists(), output_paths)):
+                self.status.emit("Output files already exists. Skipping.")
+                return
+
         # split the configuration up into multiple configurations over sub-intervals of the time range
         t = compute_evaluation_times(config["/temperature_rise/time"])
         t_chunks = numpy.array_split(t, self.njobs)
@@ -256,20 +276,6 @@ class TemperatureRiseSingleConfigProcess(parallel_jobs.JobProcessorBase):
 
         self.status.emit("Writing output files...")
 
-        output_paths = {}
-        for k in [
-            "output_file",
-            "output_config_file",
-        ]:
-            filename = config["/temperature_rise"][k]
-            if filename is not None:
-                path = Path(filename)
-                output_paths[k + "_path"] = path
-                if path.parent != Path():
-                    path.parent.mkdir(parents=True, exist_ok=True)
-            else:
-                output_paths[k + "_path"] = None
-
         if output_paths["output_config_file_path"] is not None:
             output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
 
@@ -293,6 +299,12 @@ def temperature_rise(
     ] = 100,
     list_methods: Annotated[
         bool, typer.Option(help="List the avaiable integration methods.")
+    ] = False,
+    skip_existing_outputs: Annotated[
+        bool,
+        typer.Option(
+            help="Don't run simulation if the output file that would be written already exists."
+        ),
     ] = False,
     verbose: Annotated[bool, typer.Option(help="Print extra information")] = False,
     quiet: Annotated[bool, typer.Option(help="Don't print to console.")] = False,
@@ -363,6 +375,10 @@ def temperature_rise(
             "WARNING: There duplicate configurations that will be skipped. If you did not expect this, check that your batch configurations render to different instances."
         )
         configs = configs_to_run
+
+    if skip_existing_outputs:
+        for c in configs:
+            c["/skip_existing_outputs"] = True
 
     # determine how to split up work.
     # we have a TemperatureRiseSingleConfigProcess that runs a single simulation.
@@ -450,6 +466,26 @@ class MultiplePulseCmdConfig(config.BaseModel):
 
 class MultiplePulseProcess(parallel_jobs.JobProcessorBase):
     def run_job(self, config):
+
+        # check if output paths exist
+        output_paths = {}
+        for k in ["output_file", "output_config_file"]:
+            filename = config["/multiple_pulse"][k]
+            output_paths[k + "_path"] = Path("/dev/stdout")
+            if filename is not None:
+                path = Path(filename)
+                output_paths[k + "_path"] = path
+                if path.parent != Path():
+                    path.parent.mkdir(parents=True, exist_ok=True)
+
+        if config.get("/skip_existing_outputs", False):
+            if all(map(lambda k: output_paths[k].exists(), output_paths)):
+                self.status.emit("Output files already exists. Skipping.")
+                return
+
+
+
+
         self.status.emit(
             "Loading base temperature history for building multiple-pulse history."
         )
@@ -516,16 +552,6 @@ class MultiplePulseProcess(parallel_jobs.JobProcessorBase):
 
         data[:, 1] = Tmp
 
-        output_paths = {}
-        for k in ["output_file", "output_config_file"]:
-            filename = config["/multiple_pulse"][k]
-            output_paths[k + "_path"] = Path("/dev/stdout")
-            if filename is not None:
-                path = Path(filename)
-                output_paths[k + "_path"] = path
-                if path.parent != Path():
-                    path.parent.mkdir(parents=True, exist_ok=True)
-
         output_paths["output_config_file_path"].write_text(yaml.dump(config.tree))
         fmt = config["/multiple_pulse/output_file_format"]
         if fmt is None:
@@ -541,6 +567,12 @@ class MultiplePulseProcess(parallel_jobs.JobProcessorBase):
 def multiple_pulse(
     config_file: Path,
     njobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
+    skip_existing_outputs: Annotated[
+        bool,
+        typer.Option(
+            help="Don't run simulation if the output file that would be written already exists."
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option(help="Print extra information")] = False,
     quiet: Annotated[bool, typer.Option(help="Don't print to console.")] = False,
 ):
@@ -579,12 +611,15 @@ def multiple_pulse(
             econsole.print("\n\n")
             raise typer.Exit(1)
 
-    configs_to_run = configs
-    if len(configs_to_run) > 1:
+    if len(configs) > 1:
         # disable printing status information when we are processing multiple configurations
         console.print = lambda *args, **kwargs: None
 
-    njobs = min(multiprocessing.cpu_count(), len(configs_to_run))
+    if skip_existing_outputs:
+        for c in configs:
+            c["/skip_existing_outputs"] = True
+
+    njobs = min(multiprocessing.cpu_count(), len(configs))
     controller = parallel_jobs.BatchJobController(MultiplePulseProcess, njobs=njobs)
     controller.start()
 
@@ -616,7 +651,7 @@ def multiple_pulse(
         )
     )
 
-    controller.run_jobs(configs_to_run)
+    controller.run_jobs(configs)
     controller.stop()
     controller.wait()
 
