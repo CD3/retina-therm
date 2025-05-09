@@ -483,9 +483,6 @@ class MultiplePulseProcess(parallel_jobs.JobProcessorBase):
                 self.status.emit("Output files already exists. Skipping.")
                 return
 
-
-
-
         self.status.emit(
             "Loading base temperature history for building multiple-pulse history."
         )
@@ -663,13 +660,13 @@ class TruncateTemperatureProfileProcess(parallel_jobs.JobProcessorBase):
         file = config["file"]
         threshold = config["threshold"]
 
-        self.status(f"Truncating temperature_history in {file}.")
-        self.progress(0, 4)
+        self.status.emit(f"Truncating temperature_history in {file}.")
+        self.progress.emit(0, 4)
         data = numpy.loadtxt(file)
         data = utils.read_from_file(
-            file, config.get("file_format", pathlib.Path(file).suffix[1:])
+            file, config.get("file_format", Path(file).suffix[1:])
         )
-        self.progress(1, 4)
+        self.progress.emit(1, 4)
         threshold = units.Q_(threshold)
         if threshold.check(""):
             Tmax = max(data[:, 1])
@@ -678,21 +675,23 @@ class TruncateTemperatureProfileProcess(parallel_jobs.JobProcessorBase):
             Tthreshold = threshold.magnitude
 
         if data[-1, 1] > Tthreshold:
-            self.status(f"{file} already trucated...skipping.")
-            self.progress(4, 4)
+            self.status.emit(f"{file} already trucated...skipping.")
+            self.progress.emit(4, 4)
             return
 
         self.progress(2, 4)
         idx = numpy.argmax(numpy.flip(data[:, 1]) > Tthreshold)
         self.progress(3, 4)
-        self.status(f"Saving trucated history back to {file}.")
+        self.status.emit(f"Saving trucated history back to {file}.")
         numpy.savetxt(file, data[:-idx, :])
-        self.progress(4, 4)
+        self.progress.emit(4, 4)
+        self.status.emit(f"done")
 
 
 @app.command()
 def truncate_temperature_history_file(
     temperature_history_file: List[Path],
+    njobs: Annotated[str, typer.Option(help="Number of parallel jobs to run.")] = None,
     threshold: Annotated[
         str,
         typer.Option(
@@ -712,9 +711,18 @@ def truncate_temperature_history_file(
     for file in temperature_history_file:
         configs.append({"file": file, "threshold": threshold})
 
-    controller = parallel_jobs.Controller(TruncateTemperatureProfileProcess)
-    controller.run(configs)
+    if njobs is None:
+        njobs = multiprocessing.cpu_count()
+
+    controller = parallel_jobs.BatchJobController(
+        TruncateTemperatureProfileProcess, njobs=njobs
+    )
+
+    controller.status.connect(lambda proc, msg: print(msg))
+    controller.start()
+    controller.run_jobs(configs)
     controller.stop()
+    controller.wait()
 
 
 # _            _                           _     _
