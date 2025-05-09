@@ -150,7 +150,7 @@ class TemperatureRiseConfig(config.BaseModel):
         max: config.QuantityWithUnit("s")
         resolution: config.QuantityWithUnit("s")
 
-    time: Optional[TimeConfig] = None
+    time: Optional[TimeConfig | List[TimeConfig]] = None
 
 
 class TemperatureRiseCmdConfig(config.BaseModel):
@@ -266,7 +266,7 @@ class TemperatureRiseSingleConfigProcess(parallel_jobs.JobProcessorBase):
         configs = []
         for chunk in t_chunks:
             c = copy.deepcopy(config)
-            c["/temperature_rise/time/ts"] = chunk
+            c["/temperature_rise/time"] = {"ts": chunk}
             configs.append(c)
 
         # run the configurations, blocking
@@ -687,7 +687,12 @@ def damage(
             help="Don't compute damage for temperature profile if the output file that would be written already exists."
         ),
     ] = False,
-    write_threshold_profiles:Annotated[bool, typer.Option(help="After computing the damage threshold scaling factor, write a scaled Tvst file that corresponds to the damage threshold temperature profile.")] = False,
+    write_threshold_profiles: Annotated[
+        bool,
+        typer.Option(
+            help="After computing the damage threshold scaling factor, write a scaled Tvst file that corresponds to the damage threshold temperature profile."
+        ),
+    ] = False,
     verbose: Annotated[bool, typer.Option(help="Print extra information")] = False,
     quiet: Annotated[bool, typer.Option(help="Don't print to console.")] = False,
 ):

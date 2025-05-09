@@ -28,9 +28,8 @@ temperature_rise:
     z: 1 um
     r: 0 um
   time:
-    max: 100 ms
-    resolution: 100 us
-    dt: 100 us
+    - max: 100 ms
+      resolution: 100 us
   output_file : output-simple/CW/Tvst-$(${/laser/one_over_e_radius}).txt
   output_config_file : output-simple/CW/CONFIG-$(${/laser/one_over_e_radius}).txt
 
