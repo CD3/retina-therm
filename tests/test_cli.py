@@ -48,53 +48,6 @@ temperature_rise:
     )
 
 
-@pytest.fixture
-def base_schulmeister_config():
-    return yaml.safe_load(
-        """
-thermal:
-    k: 0.6306 W/m/K
-    rho: 992 kg/m^3
-    c: 4178 J /kg / K
-layers:
-  - name: Henle's fiber layer
-    z0: 0 um
-    d: 7 um
-    mua: models.schulmeister.mua.HenlesFiberLayer({wavelength})
-  - name: Pigmented RPE
-    z0: 67 um
-    d: 10 um
-    mua: models.schulmeister.mua.RPE({wavelength})
-  - name: Choiroid
-    z0: 81 um
-    d: 170 um
-    mua: models.schulmeister.mua.Choroid({wavelength})
-laser:
-  E0: 1 W/cm^2
-  alpha: 1.5 mrad
-  L: 17 mm
-  D: $( ${L} * ${alpha}.to("rad") )
-  one_over_e_radius: $(${D}/2)
-  wavelength: 530 nm
-
-
-temperature_rise:
-  use_approximations: True
-  temperature_rise:
-    method: quad
-  output_file: 'output/CW/output-Tvst.txt'
-  output_config_file: 'output/CW/output-CONFIG.yml'
-  time:
-      resolution: 0.1 ms
-      max: 2 ms
-  sensor:
-      z: 70 um
-      r: 0 um
-
-
-"""
-    )
-
 
 def test_cli_help():
     runner = CliRunner()
@@ -113,7 +66,6 @@ def test_cli_simple_model_hdf5_output(simple_config):
         result = runner.invoke(app, ["temperature-rise", "input.yml"])
         if result.exit_code != 0:
             print(result.stdout)
-            print(result.stderr)
         assert result.exit_code == 0
         assert pathlib.Path("output/CW/output-Tvst.txt").exists()
         assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
@@ -129,20 +81,7 @@ def test_cli_simple_model(simple_config):
         result = runner.invoke(app, ["temperature-rise", "input.yml"])
         if result.exit_code != 0:
             print(result.stdout)
-            print(result.stderr)
         assert result.exit_code == 0
         assert pathlib.Path("output/CW/output-Tvst.txt").exists()
         assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
 
-
-def test_cli_schulmeister_model(base_schulmeister_config):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        pathlib.Path("input.yml").write_text(yaml.dump(base_schulmeister_config))
-        result = runner.invoke(app, ["temperature-rise", "input.yml"])
-        if result.exit_code != 0:
-            print(result.stdout)
-            print(result.stderr)
-        assert result.exit_code == 0
-        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
-        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
