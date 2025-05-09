@@ -9,10 +9,14 @@ run-simple-mp:
 run-batch:
   just run-batch-cw
   just run-batch-mp
+  just run-batch-damage
+
 run-batch-cw:
   uv run retina-therm temperature-rise  CONFIG-batch.yml --skip-existing-outputs
 run-batch-mp:
   uv run retina-therm multiple-pulse  CONFIG-batch.yml --skip-existing-outputs
+run-batch-damage:
+  uv run retina-therm damage  CONFIG-batch.yml --skip-existing-outputs --write-threshold-profiles
 
 run-large_batch:
   just run-large_batch-cw

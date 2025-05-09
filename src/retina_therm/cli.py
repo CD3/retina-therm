@@ -3,8 +3,10 @@ import importlib
 import itertools
 import multiprocessing
 import pprint
+import shutil
+import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PosixPath
 from typing import Annotated, List, Literal, Optional, Union
 
 import numpy
@@ -29,6 +31,13 @@ __version__ = importlib.metadata.version("powerconf")
 
 app = typer.Typer()
 console = rich.console.Console()
+
+
+def path_representer(dumper, data):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(data))
+
+
+yaml.add_representer(PosixPath, path_representer)
 
 
 def version_callback(value: bool):
@@ -339,7 +348,6 @@ def temperature_rise(
     configs = powerconf.utils.apply_transform(
         configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
     )
-    configs = list(map(lambda c: compute_tissue_properties(c), configs))
 
     # validate configs
     for i, config in enumerate(configs):
@@ -655,12 +663,114 @@ def multiple_pulse(
     raise typer.Exit(0)
 
 
+class DamageConfig(config.BaseModel):
+    input_file: Path
+    output_config_file: Path
+    output_file: Path
+
+    A: config.QuantityWithUnit("1/s")
+    Ea: config.QuantityWithUnit("J/mol")
+    T0: config.QuantityWithUnit("K")
+
+
+class DamageCmdConfig(config.BaseModel):
+    damage: DamageConfig
+
+
+@app.command()
+def damage(
+    config_file: Path,
+    njobs: Annotated[str, typer.Option(help="Number of parallel jobs to run.")] = None,
+    skip_existing_outputs: Annotated[
+        bool,
+        typer.Option(
+            help="Don't compute damage for temperature profile if the output file that would be written already exists."
+        ),
+    ] = False,
+    write_threshold_profiles:Annotated[bool, typer.Option(help="After computing the damage threshold scaling factor, write a scaled Tvst file that corresponds to the damage threshold temperature profile.")] = False,
+    verbose: Annotated[bool, typer.Option(help="Print extra information")] = False,
+    quiet: Annotated[bool, typer.Option(help="Don't print to console.")] = False,
+):
+    iconsole = rich.console.Console(stderr=False, quiet=quiet)
+    vconsole = rich.console.Console(
+        stderr=False, quiet=True if quiet or not verbose else False
+    )
+    econsole = rich.console.Console(stderr=True)
+    arrhenius_cli_exec = shutil.which("Arrhenius-cli")
+    if arrhenius_cli_exec is None:
+        econsole.print("[red]`Arrhenius-cli` not found.[/red]")
+        econsole.print(
+            "`retina-therm damage` uses `Arrhenius-cli` to compute damage thresholds. Please install it."
+        )
+        econsole.print("see https://github.com/CD3/libArrhenius")
+        raise typer.Exit(1)
+
+    try:
+        configs = powerconf.yaml.powerload(config_file)
+    except KeyError as e:
+        econsole.print(
+            "[red]A configuration parameter references another non-existent parameter.[/red]"
+        )
+
+        econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
+        raise typer.Exit(1)
+
+    # we need to convert all quantities to strings before we pass
+    # them to the implementation classes. they do validation based on
+    # string representations
+    configs = powerconf.utils.apply_transform(
+        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
+    )
+
+    # validate configs
+    for i, config in enumerate(configs):
+        try:
+            # validate the input config using pydantic model
+            config = DamageCmdConfig(**config.tree)
+            # copy model back to config so that default values will be filled in
+            configs[i] = fspathtree(config.model_dump())
+
+        except ValidationError as e:
+            econsole.print(
+                "[red]There was an error reading the configuration file.[/red]"
+            )
+            econsole.print("\n\nPydantic Error Message:")
+            econsole.print(e)
+            econsole.print("\n\n")
+            raise typer.Exit(1)
+
+    cmds = []
+    for config in configs:
+        output_file = config["/damage/output_file"]
+        if skip_existing_outputs and output_file.exists():
+            console.print(f"Output file `{output_file}` already exists. Skipping.")
+            continue
+        output_config_file = config["/damage/output_config_file"]
+
+        Tvst_file = config["/damage/input_file"]
+        A = units.Q_(config["/damage/A"]).magnitude
+        Ea = units.Q_(config["/damage/Ea"]).magnitude
+        T0 = units.Q_(config["/damage/T0"]).magnitude
+        cmd = f"Arrhenius-cli calc-threshold '{Tvst_file}' --A {A} --Ea {Ea} --T0 {T0}"
+        if write_threshold_profiles:
+            cmd += " --write-threshold-profiles"
+        iconsole.print(f"Running `{cmd}`")
+        output = subprocess.check_output(cmd, shell=True).decode()
+        scale = output.split("\n")[1].split("|")[-1].strip()
+
+        output_file.write_text(f"scale: {scale}\n")
+        output_config_file.write_text(yaml.dump(config.tree))
+
+    print()
+
+
 class TruncateTemperatureProfileProcess(parallel_jobs.JobProcessorBase):
     def run_job(self, config):
         file = config["file"]
         threshold = config["threshold"]
 
         self.status.emit(f"Truncating temperature_history in {file}.")
+
         self.progress.emit(0, 4)
         data = numpy.loadtxt(file)
         data = utils.read_from_file(

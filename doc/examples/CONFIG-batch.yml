@@ -18,7 +18,7 @@ batch:
 
 id:
   cw: $( get_id( ${/batch/cw} ))
-  mp: $( get_id( ${/batch/mp} ))
+  mp: $( get_id( ${/batch} ))
 
 thermal:
     k: 1.5e-3 cal / K / s / cm
@@ -62,3 +62,13 @@ multiple_pulse:
     resolution: 200 us
     max: 75 ms
   pulses: "$( [ {'arrival_time': n*${/batch/mp/t0}, 'duration':${/batch/mp/tau}, 'scale':1 } for n in range(${/batch/mp/N}) ] )"
+
+damage:
+  input_file: $(${/multiple_pulse/output_file})
+  output_file : $(${/multiple_pulse/output_file}.replace("Tvst","DamageThreshold"))
+  output_config_file :  $(${/multiple_pulse/output_config_file}.replace("CONFIG","DAMAGE-CONFIG"))
+  A: 3.1e99 1/s
+  Ea: 6.28e8 J/mol
+  T0: 37 degC
+  
+

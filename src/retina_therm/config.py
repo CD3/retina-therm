@@ -7,26 +7,54 @@ import pathlib
 from typing import Annotated, Any, List, Literal, TypeVar, Union
 
 import numpy
-from pydantic import (AfterValidator, BaseModel, BeforeValidator, Field,
-                      GetCoreSchemaHandler, PlainSerializer, WithJsonSchema,
-                      model_validator, AliasChoices)
+from pydantic import (AfterValidator, AliasChoices, BaseModel, BeforeValidator,
+                      Field, GetCoreSchemaHandler, PlainSerializer,
+                      WithJsonSchema, model_validator)
 from pydantic_core import CoreSchema, core_schema
 
 from .units import Q_
 
-QuantityWithUnit = lambda U,names=None,desc=None: Annotated[
+
+def make_quantity(qstr):
+    """
+    Make a quantity from a string.
+
+    For _most_ quantity strings we can just do Q_(qstr). However,
+    this does not work for offset units.
+    """
+    v, u = qstr.split(maxsplit=1)
+    v = float(v)
+    u = u.strip()
+    # handle inverse units that are given as the
+    # value divided by a unit. i.e. "10 / s"
+    # is "10 1/s"
+    if len(u) > 0 and u[0] == "/":
+        u = "1" + u
+    return Q_(v, u)
+
+
+QuantityWithUnit = lambda U, names=None, desc=None: Annotated[
     str,
-    AfterValidator(lambda x: Q_(x).to(U)),
+    AfterValidator(lambda x: make_quantity(x).to(U)),
     PlainSerializer(lambda x: f"{x:~}" if x is not None else "null", return_type=str),
     WithJsonSchema({"type": "string"}, mode="serialization"),
-    Field(alias=AliasChoices(*names if type(names) is list else names) if names is not None else None, description=desc)
+    Field(
+        alias=(
+            AliasChoices(*names if type(names) is list else names)
+            if names is not None
+            else None
+        ),
+        description=desc,
+    ),
 ]
 
 
 class LayerConfig(BaseModel):
-    thickness: QuantityWithUnit("cm",names=["thickness","d"])
-    position: QuantityWithUnit("cm",names=["position","z0"])
-    absorption_coeffcient: QuantityWithUnit("1/cm", names=["absorption_coeffcient","mua"])
+    thickness: QuantityWithUnit("cm", names=["thickness", "d"])
+    position: QuantityWithUnit("cm", names=["position", "z0"])
+    absorption_coeffcient: QuantityWithUnit(
+        "1/cm", names=["absorption_coeffcient", "mua"]
+    )
 
 
 class LaserConfig(BaseModel):
@@ -34,8 +62,8 @@ class LaserConfig(BaseModel):
         Literal["gaussian"] | Literal["flattop"] | Literal["1d"],
         BeforeValidator(lambda x: x.lower().replace(" ", "")),
     ] = "flattop"
-    one_over_e_radius: Union[QuantityWithUnit("cm")|None] = Field(default=None)
-    irradiance: QuantityWithUnit("W/cm^2",names=["irradiance","E0"])
+    one_over_e_radius: Union[QuantityWithUnit("cm") | None] = Field(default=None)
+    irradiance: QuantityWithUnit("W/cm^2", names=["irradiance", "E0"])
 
     # create a model validator that will check that one_over_e_radius is
     # given if profile is not 1D
@@ -68,7 +96,7 @@ class LargeBeamAbsorbingLayerGreensFunctionConfig(LayerConfig):
     rho: QuantityWithUnit("g/cm^3")
     c: QuantityWithUnit("J/g/K")
     k: QuantityWithUnit("W/cm/K")
-    irradiance: QuantityWithUnit("W/cm^2",names=["irradiance","E0"])
+    irradiance: QuantityWithUnit("W/cm^2", names=["irradiance", "E0"])
 
     with_units: bool = False
     use_multi_precision: bool = False

@@ -48,7 +48,6 @@ temperature_rise:
     )
 
 
-
 def test_cli_help():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
@@ -84,4 +83,3 @@ def test_cli_simple_model(simple_config):
         assert result.exit_code == 0
         assert pathlib.Path("output/CW/output-Tvst.txt").exists()
         assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
-
