@@ -46,6 +46,12 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
+def q2str(p, v):
+    if hasattr(v, "magnitude"):
+        return str(v)
+    return v
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -333,7 +339,11 @@ def temperature_rise(
     econsole = rich.console.Console(stderr=True)
 
     try:
-        configs = powerconf.yaml.powerload(config_file)
+        # we need to convert all quantities to strings because they will ahve been created
+        # with a different unit registry than the models are using.
+        configs = powerconf.yaml.powerload(
+            config_file, njobs=multiprocessing.cpu_count(), transform=q2str
+        )
     except KeyError as e:
         econsole.print(
             "[red]A configuration parameter references another non-existent parameter.[/red]"
@@ -341,13 +351,6 @@ def temperature_rise(
 
         econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
         raise typer.Exit(1)
-
-    # we need to convert all quantities to strings before we pass
-    # them to the implementation classes. they do validation based on
-    # string representations
-    configs = powerconf.utils.apply_transform(
-        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
-    )
 
     # validate configs
     for i, config in enumerate(configs):
@@ -587,8 +590,13 @@ def multiple_pulse(
     )
     econsole = rich.console.Console(stderr=True)
 
+    iconsole.print("Loading configuration(s)")
     try:
-        configs = powerconf.yaml.powerload(config_file)
+        # we need to convert all quantities to strings because they will ahve been created
+        # with a different unit registry than the models are using.
+        configs = powerconf.yaml.powerload(
+            config_file, njobs=multiprocessing.cpu_count(), transform=q2str
+        )
     except KeyError as e:
         econsole.print(
             "[red]A configuration parameter references another non-existent parameter.[/red]"
@@ -596,13 +604,10 @@ def multiple_pulse(
 
         econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
         raise typer.Exit(1)
-    configs = list(
-        filter(lambda c: "/remove" not in c or not any(c["/remove"]), configs)
-    )
-    configs = powerconf.utils.apply_transform(
-        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
-    )
+    iconsole.print(f"done. Loaded {len(configs)} configurations.")
+
     # validate configs
+    iconsole.print("Validating configuration(s)")
     for i, config in enumerate(configs):
         try:
             config = MultiplePulseCmdConfig(**config.tree)
@@ -615,6 +620,7 @@ def multiple_pulse(
             econsole.print(e)
             econsole.print("\n\n")
             raise typer.Exit(1)
+    iconsole.print("done")
 
     if len(configs) > 1:
         # disable printing status information when we are processing multiple configurations
@@ -624,7 +630,10 @@ def multiple_pulse(
         for c in configs:
             c["/skip_existing_outputs"] = True
 
-    njobs = min(multiprocessing.cpu_count(), len(configs))
+    if njobs is None:
+        njobs = min(multiprocessing.cpu_count(), len(configs))
+
+    iconsole.print("Setting up parallel job processor and running configs")
     controller = parallel_jobs.BatchJobController(MultiplePulseProcess, njobs=njobs)
     controller.start()
 
@@ -656,6 +665,7 @@ def multiple_pulse(
         )
     )
 
+    iconsole.print("Running jobs")
     controller.run_jobs(configs)
     controller.stop()
     controller.wait()
@@ -711,7 +721,11 @@ def damage(
         raise typer.Exit(1)
 
     try:
-        configs = powerconf.yaml.powerload(config_file)
+        # we need to convert all quantities to strings because they will ahve been created
+        # with a different unit registry than the models are using.
+        configs = powerconf.yaml.powerload(
+            config_file, njobs=multiprocessing.cpu_count(), transform=q2str
+        )
     except KeyError as e:
         econsole.print(
             "[red]A configuration parameter references another non-existent parameter.[/red]"
@@ -719,13 +733,6 @@ def damage(
 
         econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
         raise typer.Exit(1)
-
-    # we need to convert all quantities to strings before we pass
-    # them to the implementation classes. they do validation based on
-    # string representations
-    configs = powerconf.utils.apply_transform(
-        configs, lambda p, n: str(n), predicate=lambda p, n: hasattr(n, "magnitude")
-    )
 
     # validate configs
     for i, config in enumerate(configs):
@@ -1155,3 +1162,112 @@ def truncate_temperature_history_file(
 #             for n in range(1, N):
 #                 H = (m * T0 - m * Tnuc) / (1 - m * units.Q_(T[n - 1], "K/(J/cm^2)"))
 #                 f.write(f"{n} {H}\n")
+
+
+@app.command()
+def status(
+    config_file: Path,
+):
+
+    iconsole = rich.console.Console(stderr=False)
+    econsole = rich.console.Console(stderr=True)
+
+    iconsole.print("Loading configuration(s)")
+    try:
+        configs = powerconf.yaml.powerload(
+            config_file, njobs=multiprocessing.cpu_count()
+        )
+    except KeyError as e:
+        econsole.print(
+            "[red]A configuration parameter references another non-existent parameter.[/red]"
+        )
+
+        econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
+        raise typer.Exit(1)
+    iconsole.print("done.")
+
+    output_files = {}
+    output_files_exist = {}
+    for config in configs:
+        for node in config.get_all_leaf_node_paths():
+            if node.name == "output_file":
+                if node not in output_files:
+                    output_files[node] = []
+                output_files[node].append(Path(config[node]))
+    for k in output_files:
+        output_files_exist[k] = list(map(lambda p: p.exists(), output_files[k]))
+    iconsole.print(
+        f"{len(configs)} configuration instances producing {len(output_files)} output files."
+    )
+
+    finished = sum(itertools.chain(*output_files_exist.values()))
+    total = len(list(itertools.chain(*output_files_exist.values())))
+
+    iconsole.print(
+        f"{ finished } ({ 100*finished/total}%) output files have already been generated."
+    )
+    for k in output_files_exist:
+        iconsole.print(
+            "    ", k, sum(output_files_exist[k]), "/", len(output_files_exist[k])
+        )
+
+
+@app.command()
+def report(
+    config_file: Path,
+    output_file: Annotated[
+        Path, typer.Argument(help="File to write report to.")
+    ] = Path("/dev/stdout"),
+    format: Annotated[
+        str, typer.Argument(help="Report format. Currently only 'txt' is supported.")
+    ] = "txt",
+):
+    iconsole = rich.console.Console(stderr=False)
+    econsole = rich.console.Console(stderr=True)
+    iconsole.print("Loading configuration(s)")
+    try:
+        configs = powerconf.yaml.powerload(
+            config_file, njobs=multiprocessing.cpu_count()
+        )
+    except KeyError as e:
+        econsole.print(
+            "[red]A configuration parameter references another non-existent parameter.[/red]"
+        )
+
+        econsole.print("\n\n[red]" + str(e) + "[/red]\n\n")
+        raise typer.Exit(1)
+    iconsole.print("done.")
+
+    rows = []
+    rows.append(
+        list(
+            map(
+                lambda n: (
+                    n["title"]
+                    if "unit" not in n
+                    else n["title"] + " [" + n["unit"] + "]"
+                ),
+                configs[0]["/report/columns"],
+            )
+        )
+    )
+    for config in configs:
+        row = []
+        for i in range(len(rows[0])):
+            v = config[f"/report/columns/{i}/value"]
+            if v is None:
+                v = "--"
+            elif "unit" in config[f"/report/columns/{i}"]:
+                v.ito(config[f"/report/columns/{i}/unit"])
+                v = str(v.magnitude)
+                print(v)
+            else:
+                v = str(v)
+            row.append(v)
+        rows.append(row)
+
+    if format == "txt":
+        with output_file.open("w") as f:
+            for row in rows:
+                f.write("|".join(row))
+                f.write("\n")

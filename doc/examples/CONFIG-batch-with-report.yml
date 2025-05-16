@@ -1,0 +1,93 @@
+batch:
+  cw:
+    one_over_e_radius:
+      '@batch':
+        - 10 um
+        - 20 um
+        - 50 um
+        - 100 um
+  mp:
+    tau: 10 ms
+    t0: 20 ms
+    N:
+      '@batch':
+        - 1
+        - 2
+        - 4
+    
+
+id:
+  cw: $( get_id( ${/batch/cw} ))
+  mp: $( get_id( ${/batch} ))
+
+thermal:
+    k: 1.5e-3 cal / K / s / cm
+    rho: 1 g/cm^3
+    c: 1 cal / K /g
+layers:
+  - mua: 310 1/cm
+    d: 10 um
+    z0: 0 um
+    absorption_coefficient: 310 1/cm
+    thickness: 10 um
+    position: 0 um
+  - mua: 53 1/cm
+    d: 100 um
+    z0: 10 um
+    absorption_coefficient: 53 1/cm
+    thickness: 100 um
+    position: 10 um
+laser:
+  wavelength: 700 nm
+  duration: 10 s
+  E0: 1 cal/s/cm^2
+  irradiance: 1 cal/s/cm^2
+  one_over_e_radius: $(${/batch/cw/one_over_e_radius})
+
+temperature_rise:
+  sensor:
+    z: 1 um
+    r: 0 um
+  time:
+    max: 100 ms
+    resolution: 10 us
+  output_file : output-batch/CW/Tvst-$(${/id/cw}).txt
+  output_config_file : output-batch/CW/CONFIG-$(${/id/cw}).txt
+
+multiple_pulse:
+  input_file: $(${/temperature_rise/output_file})
+  output_file : output-batch/MP/Tvst-$(${/id/mp}).txt
+  output_config_file : output-batch/MP/CONFIG-$(${/id/mp}).txt
+  time:
+    resolution: 200 us
+    max: 75 ms
+  pulses: "$( [ {'arrival_time': n*${/batch/mp/t0}, 'duration':${/batch/mp/tau}, 'scale':1 } for n in range(${/batch/mp/N}) ] )"
+
+damage:
+  input_file: $(${/multiple_pulse/output_file})
+  output_file : $(${/multiple_pulse/output_file}.replace("Tvst","DamageThreshold"))
+  output_config_file :  $(${/multiple_pulse/output_config_file}.replace("CONFIG","DAMAGE-CONFIG"))
+  A: 3.1e99 1/s
+  Ea: 6.28e8 J/mol
+  T0: 37 degC
+  
+report:
+  columns:
+    - title: diameter
+      value: $(${/laser/one_over_e_radius}*2)
+      unit: um
+    - title: pulse duration
+      value: $(${/batch/mp/tau})
+      unit: ms
+    - title: PRF
+      value: $(1/${/batch/mp/t0})
+      unit: Hz
+    - title: N
+      value: $(${/batch/mp/N})
+    - title: threshold
+      scale: $(get_scale(  ${/damage/output_file} ))
+      value: $(None if ${scale} is None else ${/laser/irradiance}*${scale} )
+      unit: W/cm/cm
+    - title: peak temperature
+      value: $(get_peak_temperature(  ${/multiple_pulse/output_file} ))
+      unit: degC

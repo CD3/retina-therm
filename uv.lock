@@ -284,7 +284,7 @@ wheels = [
 
 [[package]]
 name = "powerconf"
-version = "0.5.0"
+version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fspathtree" },
@@ -295,9 +295,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/d3/0d9c281c0ad4f0e233e0fd1a80074b11ff5734c5ab6f019d3a1ec254e306/powerconf-0.5.0.tar.gz", hash = "sha256:095c6884281a83018f9ccdb409f631a610df8613d6424abf195bc00aad85fa97", size = 60320 }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/c8/dc4863eb5e55ae292fedbe16286c9911f56af5ed5011b178088213f25784/powerconf-0.7.0.tar.gz", hash = "sha256:bdd2b72d09bbce1c2038524fe5a186951d088c5e78429e929106ff7c6ab454bf", size = 70944 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/67/7c2103cb91aedc94dd263b63671c9ce86b0af1af5fdfdb4a5fb3360fb081/powerconf-0.5.0-py3-none-any.whl", hash = "sha256:ec7e7bebc9de08740ff886845cf359085dea7a488171ee3c78e0a9a2cc7056a4", size = 15375 },
+    { url = "https://files.pythonhosted.org/packages/e0/9c/b583a7aa468fa8f248f5cbeacfc8472fd9bf033079998be4a9b86aea3e42/powerconf-0.7.0-py3-none-any.whl", hash = "sha256:58d73f7fdcba834962e1b89a434d827e840d23e16e0e9e1a793d0ce35578f95f", size = 17464 },
 ]
 
 [[package]]
@@ -610,7 +610,7 @@ wheels = [
 
 [[package]]
 name = "retina-therm"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "fspathtree" },
@@ -641,7 +641,7 @@ requires-dist = [
     { name = "mpmath", specifier = ">=1.3.0" },
     { name = "numpy", specifier = ">=2.1.1" },
     { name = "pint", specifier = ">=0.24.3" },
-    { name = "powerconf", specifier = ">=0.1.2" },
+    { name = "powerconf", specifier = ">=0.7.0" },
     { name = "pydantic", specifier = ">=2.9.2" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "tissue-properties", specifier = ">=0.2.0" },
