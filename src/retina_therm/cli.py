@@ -26,7 +26,7 @@ from retina_therm import (config, greens_functions, multi_pulse_builder,
 
 from . import parallel_jobs, utils
 
-__version__ = importlib.metadata.version("powerconf")
+__version__ = importlib.metadata.version("retina-therm")
 
 
 app = typer.Typer()
