@@ -1,3 +1,6 @@
+list:
+  just --list
+
 run-simple:
   just run-simple-cw
   just run-simple-mp

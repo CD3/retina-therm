@@ -1260,7 +1260,6 @@ def report(
             elif "unit" in config[f"/report/columns/{i}"]:
                 v.ito(config[f"/report/columns/{i}/unit"])
                 v = str(v.magnitude)
-                print(v)
             else:
                 v = str(v)
             row.append(v)
