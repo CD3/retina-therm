@@ -1,6 +1,6 @@
 [project]
 name = "retina-therm"
-version = "0.7.0"
+version = "0.7.1"
 description = "A model for simulating retinal laser exposures."
 authors = [{name = "CD Clark III", email = "clifton.clark@gmail.com"}]
 dependencies = [
