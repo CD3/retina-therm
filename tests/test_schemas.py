@@ -75,20 +75,30 @@ def test_GaussianBeamAbsorbingLayerGreensFunctionConfig():
 
 
 def test_MultiLayerGreensFunctionConfig():
-    laser_config = LaserConfig(**{"profile": "gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(
+        **{"profile": "gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"}
+    )
     assert laser_config.profile == "gaussian"
 
-    laser_config = LaserConfig(**{"profile": "flattop", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(
+        **{"profile": "flattop", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"}
+    )
     assert laser_config.profile == "flattop"
 
-    laser_config = LaserConfig(**{"profile": "Gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(
+        **{"profile": "Gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"}
+    )
     assert laser_config.profile == "gaussian"
 
-    laser_config = LaserConfig(**{"profile": "Flat Top", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(
+        **{"profile": "Flat Top", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"}
+    )
     assert laser_config.profile == "flattop"
 
     with pytest.raises(Exception):
-        laser_config = LaserConfig(**{"profile": "annular", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
+        laser_config = LaserConfig(
+            **{"profile": "annular", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"}
+        )
 
     thermal_config = ThermalPropertiesConfig(
         **{"rho": "1 g/cm**3", "c": "1 cal/g/K", "k": "1 W/cm/K"}
@@ -105,7 +115,11 @@ def test_MultiLayerGreensFunctionConfig():
     config = MultiLayerGreensFunctionConfig(
         **{
             "simulation": {},
-            "laser": {"profile": "Flat Top", "one_over_e_radius": "10 um", "E0": "1 W/cm^2"},
+            "laser": {
+                "profile": "Flat Top",
+                "one_over_e_radius": "10 um",
+                "E0": "1 W/cm^2",
+            },
             "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
             "layers": [
                 {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
@@ -120,7 +134,9 @@ def test_MultiLayerGreensFunctionConfig():
 
 
 def test_LaserSchema():
-    laser_config = LaserConfig(**{"profile": "gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"})
+    laser_config = LaserConfig(
+        **{"profile": "gaussian", "one_over_e_radius": "1 cm", "E0": "1 W/cm^2"}
+    )
     assert laser_config.one_over_e_radius.magnitude == pytest.approx(1)
 
     with pytest.raises(Exception):
@@ -195,7 +211,7 @@ def test_beam_radius_required_if_not_1d():
     with pytest.raises(pydantic.ValidationError):
         config = LaserConfig(**{"E0": 1})
     with pytest.raises(pint.DimensionalityError):
-        config = LaserConfig(**{"E0": "1"})
+        config = LaserConfig(**{"E0": "1 cm"})
 
     with pytest.raises(pydantic.ValidationError):
         config = LaserConfig(**{"E0": "1 W/cm/cm"})
@@ -215,7 +231,11 @@ def test_cw_retina_exposure_config():
     config = CWRetinaLaserExposureConfig(
         **{
             "simulation": {},
-            "laser": {"profile": "Flat Top", "one_over_e_radius": "10 um", "E0": "1 W/cm^2"},
+            "laser": {
+                "profile": "Flat Top",
+                "one_over_e_radius": "10 um",
+                "E0": "1 W/cm^2",
+            },
             "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
             "layers": [
                 {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
@@ -231,7 +251,11 @@ def test_cw_retina_exposure_config():
 def test_pulsed_retina_exposure_config():
     config_dict = {
         "simulation": {},
-        "laser": {"profile": "Flat Top", "one_over_e_radius": "10 um", "E0": "1 W/cm^2"},
+        "laser": {
+            "profile": "Flat Top",
+            "one_over_e_radius": "10 um",
+            "E0": "1 W/cm^2",
+        },
         "thermal": {"rho": "1 g/cm^3", "c": "1 cal/g/K", "k": "0.00628 W/cm/K"},
         "layers": [
             {"d": "10 um", "z0": "0 um", "mua": "300 1/cm"},
@@ -263,7 +287,6 @@ def test_pulsed_retina_exposure_config():
 
 
 def test_multiple_pulse_cmd_input():
-
     MultiplePulseContribution(**{"arrival_time": "0 s", "scale": 1.2})
 
     input = {

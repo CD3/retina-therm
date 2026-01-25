@@ -120,7 +120,7 @@ class BatchJobController:
     def run_jobs(self, jobs):
         """
         Run jobs in subprocesses. Results will be returned in order (in a list) even though
-        the jobs to not have to finish in order.
+        the jobs do not have to finish in order.
         """
         # running is a list that stores the job number running in each process. -1 means "no job running".
         # results is a list of results returned by the processes that run a job. it is "ordered".
@@ -148,7 +148,7 @@ class BatchJobController:
                     elif msg["type"] == "error":
                         print("There was an exception in the in the child process")
                         print(msg["payload"])
-
+                        running[i] = -1
                     else:
                         raise RuntimeError(f"Unknown message type, msg: {msg}")
         return results

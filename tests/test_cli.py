@@ -36,13 +36,12 @@ temperature_rise:
       z: 70 um
       r: 0 um
   use_approximations: True
-  temperature_rise:
-    method: quad
+  method: quad
   output_file: 'output/CW/output-Tvst.txt'
   output_config_file: 'output/CW/output-CONFIG.yml'
   time:
       resolution: 0.1 ms
-      max: 2 ms
+      max: 20 ms
 
 """
     )
@@ -57,6 +56,20 @@ def test_cli_help():
     assert "Usage:" in result.stdout
 
 
+@pytest.mark.timeout(5)
+def test_cli_simple_model(simple_config):
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
+        result = runner.invoke(app, ["temperature-rise", "input.yml"])
+        if result.exit_code != 0:
+            print(result.stdout)
+        assert result.exit_code == 0
+        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
+        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()
+
+
+@pytest.mark.timeout(5)
 def test_cli_simple_model_hdf5_output(simple_config):
     runner = CliRunner()
     with runner.isolated_filesystem():
@@ -71,15 +84,3 @@ def test_cli_simple_model_hdf5_output(simple_config):
 
         with pytest.raises(UnicodeDecodeError):
             output = pathlib.Path("output/CW/output-Tvst.txt").read_text()
-
-
-def test_cli_simple_model(simple_config):
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
-        result = runner.invoke(app, ["temperature-rise", "input.yml"])
-        if result.exit_code != 0:
-            print(result.stdout)
-        assert result.exit_code == 0
-        assert pathlib.Path("output/CW/output-Tvst.txt").exists()
-        assert pathlib.Path("output/CW/output-CONFIG.yml").exists()

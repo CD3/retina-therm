@@ -12,6 +12,7 @@ from typing import Annotated, List, Literal, Optional, Union
 import numpy
 import powerconf
 import rich
+import rich.console
 import scipy
 import typer
 import yaml
@@ -21,8 +22,14 @@ from pydantic import BeforeValidator, ValidationError
 from tqdm import tqdm
 
 import retina_therm
-from retina_therm import (config, greens_functions, multi_pulse_builder,
-                          signals, units, utils)
+from retina_therm import (
+    config,
+    greens_functions,
+    multi_pulse_builder,
+    signals,
+    units,
+    utils,
+)
 
 from . import parallel_jobs, utils
 
@@ -245,7 +252,6 @@ class TemperatureRiseSingleConfigProcess(parallel_jobs.JobProcessorBase):
             self.controller.wait()
 
     def run_job(self, config):  # Runs in CHILD
-
         # check if output files exist
         output_paths = {}
         for k in [
@@ -477,7 +483,6 @@ class MultiplePulseCmdConfig(config.BaseModel):
 
 class MultiplePulseProcess(parallel_jobs.JobProcessorBase):
     def run_job(self, config):
-
         # check if output paths exist
         output_paths = {}
         for k in ["output_file", "output_config_file"]:
@@ -514,7 +519,7 @@ class MultiplePulseProcess(parallel_jobs.JobProcessorBase):
             tmax = units.Q_(config["/multiple_pulse/time/max"])
             if tmax.to("s").magnitude < data[0, 0]:
                 raise RuntimeError(
-                    f"/tmax ({tmax}) cannot be less than first time in history ({data[0,0]})."
+                    f"/tmax ({tmax}) cannot be less than first time in history ({data[0, 0]})."
                 )
             if tmax.to("s").magnitude < data[-1, 0]:
                 while imax > 0 and data[imax - 1, 0] > tmax.to("s").magnitude:
@@ -1168,7 +1173,6 @@ def truncate_temperature_history_file(
 def status(
     config_file: Path,
 ):
-
     iconsole = rich.console.Console(stderr=False)
     econsole = rich.console.Console(stderr=True)
 
@@ -1204,7 +1208,7 @@ def status(
     total = len(list(itertools.chain(*output_files_exist.values())))
 
     iconsole.print(
-        f"{ finished } ({ 100*finished/total}%) output files have already been generated."
+        f"{finished} ({100 * finished / total}%) output files have already been generated."
     )
     for k in output_files_exist:
         iconsole.print(

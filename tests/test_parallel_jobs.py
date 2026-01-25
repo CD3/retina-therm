@@ -2,6 +2,8 @@ import itertools
 import os
 import time
 
+import pytest
+
 from retina_therm.parallel_jobs import *
 
 
