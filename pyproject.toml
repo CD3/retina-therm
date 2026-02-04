@@ -1,42 +1,49 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
 [project]
 name = "retina-therm"
-version = "0.7.1"
+version = "0.7.2"
 description = "A model for simulating retinal laser exposures."
-authors = [{name = "CD Clark III", email = "clifton.clark@gmail.com"}]
-dependencies = [
-    "numpy>=2.1.1",
-    "typer>=0.12.5",
-    "pyyaml>=6.0.2",
-    "pint>=0.24.3",
-    "fspathtree>=1.0",
-    "pydantic>=2.9.2",
-    "tissue-properties>=0.2.0",
-    "powerconf>=0.7.0",
-    "tqdm>=4.66.5",
-    "h5py>=3.11.0",
-    "mpmath>=1.3.0",
-    "pytest-timeout>=2.4.0",
-]
 readme = "README.md"
-requires-python = ">= 3.10"
+authors = [ { name = "CD Clark III", email = "clifton.clark@gmail.com" } ]
+requires-python = ">=3.10"
 
-[project.scripts]
-"retina-therm" = "retina_therm.cli:app"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.uv]
-managed = true
-dev-dependencies = [
-    "pudb>=2024.1.3",
-    "pytest>=8.3.3",
-    "pytest-benchmark>=4.0.0",
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
+dependencies = [
+  "fspathtree>=1",
+  "h5py>=3.11",
+  "mpmath>=1.3",
+  "numpy>=2.1.1",
+  "pint>=0.24.3",
+  "powerconf>=0.7",
+  "pydantic>=2.9.2",
+  "pytest-timeout>=2.4",
+  "pyyaml>=6.0.2",
+  "tissue-properties>=0.2",
+  "tqdm>=4.66.5",
+  "typer>=0.12.5",
+]
+scripts."retina-therm" = "retina_therm.cli:app"
 
 [tool.hatch.metadata]
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/retina_therm"]
+packages = [ "src/retina_therm" ]
+
+[tool.uv]
+managed = true
+dev-dependencies = [
+  "pudb>=2024.1.3",
+  "pytest>=8.3.3",
+  "pytest-benchmark>=4.0.0",
+]
