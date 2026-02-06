@@ -3,6 +3,9 @@ import multiprocessing
 import os
 import time
 from collections import deque
+from typing import Any, Literal
+
+from pydantic import BaseModel
 
 from .progress_display import *
 from .signals import *
@@ -12,9 +15,9 @@ def pprint(*args):
     print(os.getpid(), *args)
 
 
-def get_open_file_descriptors(pid):
-    fds = set(os.listdir("/proc/self/fd"))
-    return fds
+class JobProcessorMessageModel(BaseModel):
+    type: Literal["call", "shutdown", "result", "reply", "progress", "status", "error"]
+    payload: Any
 
 
 def mkmsg(t, p):
@@ -26,9 +29,22 @@ class JobProcessorBase(multiprocessing.Process):
     """
     A class for implementing work that will run in a separate process.
 
-    To use, subclass and implement the `run_job(...)` method.
+    To use, subclass and implement the `run_job(a)` method to do work,
+    then start the process and send it jobs via messages.
 
-    To communicate with parent, use `msg_send(msg)`, `mes_poll()`, and `msg_recv()` method.
+    `run_job` can only take one argument, if it needs to take multiple arguments use a dict.
+
+    To communicate with parent, use `msg_send(msg)`, `mes_poll()`, and `msg_recv()` methods.
+
+    Messages:
+        Schema: { 'type': type:str, 'payload': payload:Any }
+
+        Types
+            'call': sent to the child to do something
+            'result': sent back by the child to return the result of the computation
+            'progress': sent back by child to indicate progress
+            'status': sent back by child to indicate status
+
     """
 
     def __init__(self):
@@ -67,17 +83,27 @@ class JobProcessorBase(multiprocessing.Process):
         self._start()
         while running:
             msg = self.msg_recv()
-            if msg["type"] == "call":
-                if msg["payload"] == "stop":
-                    running = False
-                    self._stop()
-                else:
-                    try:
-                        result = self.run_job(msg["payload"])
-                        self.msg_send(mkmsg("result", result))
-                        self.msg_send(mkmsg("reply", "finished"))
-                    except Exception as e:
-                        self.msg_send(mkmsg("error", str(e)))
+            try:
+                msg = JobProcessorMessageModel(**msg)
+            except Exception as e:
+                self.msg_send(mkmsg("error", str(e)))
+                continue
+            # legacy message for shutting down
+            if msg.type == "call":
+                if msg.payload == "stop":
+                    msg.type = "shutdown"
+
+            if msg.type == "shutdown":
+                running = False
+                self._stop()
+
+            if msg.type == "call":
+                try:
+                    result = self.run_job(msg.payload)
+                    self.msg_send(mkmsg("result", result))
+                    self.msg_send(mkmsg("reply", "finished"))
+                except Exception as e:
+                    self.msg_send(mkmsg("error", str(e)))
         self.progress.clear_slots()
         self.status.clear_slots()
 
@@ -92,6 +118,17 @@ class JobProcessorBase(multiprocessing.Process):
         Derived classes can implement to run any teardown code that is needed.
         """
         pass
+
+    def __del__(self):
+        pass
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exception_type, exception_value, exception_traceback):
+        self.msg_send(mkmsg("call", "stop"))
+        return False
 
 
 class BatchJobController:
@@ -117,6 +154,9 @@ class BatchJobController:
     def wait(self):
         deque(map(lambda p: p.join(), self.processes))
 
+    def kill(self):
+        deque(map(lambda p: p.kill(), self.processes))
+
     def run_jobs(self, jobs):
         """
         Run jobs in subprocesses. Results will be returned in order (in a list) even though
@@ -136,18 +176,19 @@ class BatchJobController:
                     running[i] = len(jobs)
                 if p.msg_poll():
                     msg = p.msg_recv()
-                    if msg["type"] == "result":
-                        results[running[i]] = msg["payload"]
-                    elif msg["type"] == "reply":
-                        if msg["payload"] == "finished":
+                    msg = JobProcessorMessageModel(**msg)
+                    if msg.type == "result":
+                        results[running[i]] = msg.payload
+                    elif msg.type == "reply":
+                        if msg.payload == "finished":
                             running[i] = -1
-                    elif msg["type"] == "progress":
-                        self.progress.emit(i, msg["payload"])
-                    elif msg["type"] == "status":
-                        self.status.emit(i, msg["payload"])
-                    elif msg["type"] == "error":
+                    elif msg.type == "progress":
+                        self.progress.emit(i, msg.payload)
+                    elif msg.type == "status":
+                        self.status.emit(i, msg.payload)
+                    elif msg.type == "error":
                         print("There was an exception in the in the child process")
-                        print(msg["payload"])
+                        print(msg.payload)
                         running[i] = -1
                     else:
                         raise RuntimeError(f"Unknown message type, msg: {msg}")
