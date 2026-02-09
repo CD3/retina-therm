@@ -139,28 +139,47 @@ def test_parallel_batch_job_controller():
         controller = BatchJobController(MyProcess, njobs=1)
         controller.start()
         start = time.perf_counter()
-        controller.run_jobs([1, 2])
+        results = controller.run_jobs([1, 2])
         end = time.perf_counter()
         controller.stop()
         controller.wait()
 
         assert end - start > 2
-        # assert len(controller.results) == 1
-        # assert len(controller.results[0]) == 2
+        assert len(results) == 2
+        assert results[0] == 1
+        assert results[1] == 2
 
         controller = BatchJobController(MyProcess, njobs=2)
         controller.start()
 
         start = time.perf_counter()
-        controller.run_jobs([1, 2])
+        results = controller.run_jobs([1, 2])
         end = time.perf_counter()
         controller.stop()
         controller.wait()
 
         assert end - start > 1
         assert end - start < 1.5
-        # assert len(controller.results) == 1
-        # assert len(controller.results[0]) == 2
+        assert len(results) == 2
+        assert results[0] == 1
+        assert results[1] == 2
+
+        # case were there are more processes than jobs.
+
+        controller = BatchJobController(MyProcess, njobs=3)
+        controller.start()
+
+        start = time.perf_counter()
+        results = controller.run_jobs([1, 2])
+        end = time.perf_counter()
+        controller.stop()
+        controller.wait()
+
+        assert end - start > 1
+        assert end - start < 1.5
+        assert len(results) == 2
+        assert results[0] == 1
+        assert results[1] == 2
     finally:
         controller.kill()
 
@@ -219,3 +238,17 @@ def test_parallel_job_controller_and_subjob_controller():
         assert len(results) == 2
     finally:
         controller.kill()
+
+
+def test_parallel_job_processor_throwing_exception_in_child():
+    class myProcess(JobProcessorBase):
+        def run_job(self, arg=None):
+            raise RuntimeError("I can't do work")
+            return os.getpid()
+
+    with myProcess() as p:
+        p.msg_send(mkmsg("call", None))
+
+        r = p.msg_recv()
+        assert r["type"] == "exception"
+        assert "I can't do work" in r["payload"]

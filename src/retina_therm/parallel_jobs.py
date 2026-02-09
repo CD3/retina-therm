@@ -1,7 +1,10 @@
 import asyncio
+import json
 import multiprocessing
 import os
+import sys
 import time
+import traceback
 from collections import deque
 from typing import Any, Literal
 
@@ -16,12 +19,23 @@ def pprint(*args):
 
 
 class JobProcessorMessageModel(BaseModel):
-    type: Literal["call", "shutdown", "result", "reply", "progress", "status", "error"]
+    type: Literal[
+        "call",
+        "shutdown",
+        "result",
+        "reply",
+        "progress",
+        "status",
+        "error",
+        "exception",
+    ]
     payload: Any
 
 
 def mkmsg(t, p):
     "Create a message of type `t` with payload `p`"
+    msg = JobProcessorMessageModel(type=t, payload=p)
+    # return json.loads(msg.model_dump_json())
     return {"type": t, "payload": p}
 
 
@@ -103,7 +117,7 @@ class JobProcessorBase(multiprocessing.Process):
                     self.msg_send(mkmsg("result", result))
                     self.msg_send(mkmsg("reply", "finished"))
                 except Exception as e:
-                    self.msg_send(mkmsg("error", str(e)))
+                    self.msg_send(mkmsg("exception", traceback.format_exc()))
         self.progress.clear_slots()
         self.status.clear_slots()
 
@@ -132,6 +146,11 @@ class JobProcessorBase(multiprocessing.Process):
 
 
 class BatchJobController:
+    """
+    A class for controlling (managing) multiple processes for running
+    jobs.
+    """
+
     def __init__(self, proc_type, *, njobs, args={}):
         self.parent_pid = os.getpid()
         self.processes = list(
@@ -146,7 +165,7 @@ class BatchJobController:
     def stop(self):
         deque(
             map(
-                lambda p: p.msg_send(mkmsg("call", "stop")),
+                lambda p: p.msg_send(mkmsg("shutdown", None)),
                 self.processes,
             )
         )
@@ -187,6 +206,10 @@ class BatchJobController:
                     elif msg.type == "status":
                         self.status.emit(i, msg.payload)
                     elif msg.type == "error":
+                        print("There was an error in the in the child process")
+                        print(msg.payload)
+                        running[i] = -1
+                    elif msg.type == "exception":
                         print("There was an exception in the in the child process")
                         print(msg.payload)
                         running[i] = -1
