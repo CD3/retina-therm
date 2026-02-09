@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "retina-therm"
-version = "0.7.2"
+version = "0.7.3"
 description = "A model for simulating retinal laser exposures."
 readme = "README.md"
 authors = [ { name = "CD Clark III", email = "clifton.clark@gmail.com" } ]
