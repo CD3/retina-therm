@@ -84,3 +84,15 @@ def test_cli_simple_model_hdf5_output(simple_config):
 
         with pytest.raises(UnicodeDecodeError):
             output = pathlib.Path("output/CW/output-Tvst.txt").read_text()
+
+
+@pytest.mark.timeout(5)
+def test_cli_config_error_in_subprocess(simple_config):
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        simple_config["thermal"]["k"] = "$(${/missing})"
+        pathlib.Path("input.yml").write_text(yaml.dump(simple_config))
+        result = runner.invoke(app, ["temperature-rise", "input.yml"])
+        if result.exit_code != 0:
+            print(result.stdout)
+        assert result.exit_code != 0

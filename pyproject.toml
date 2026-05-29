@@ -8,15 +8,12 @@ version = "0.7.3"
 description = "A model for simulating retinal laser exposures."
 readme = "README.md"
 authors = [ { name = "CD Clark III", email = "clifton.clark@gmail.com" } ]
-requires-python = ">=3.10"
-
+requires-python = ">=3.10,<3.13"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
-  "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
   "fspathtree>=1",
@@ -24,7 +21,7 @@ dependencies = [
   "mpmath>=1.3",
   "numpy>=2.1.1",
   "pint>=0.24.3",
-  "powerconf>=0.7",
+  "powerconf>=0.8.4",
   "pydantic>=2.9.2",
   "pytest-timeout>=2.4",
   "pyyaml>=6.0.2",
@@ -32,18 +29,16 @@ dependencies = [
   "tqdm>=4.66.5",
   "typer>=0.12.5",
 ]
-scripts."retina-therm" = "retina_therm.cli:app"
+scripts.retina-therm = "retina_therm.cli:app"
 
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.hatch.build.targets.wheel]
-packages = [ "src/retina_therm" ]
+[tool.hatch]
+build.targets.wheel.packages = [ "src/retina_therm" ]
+metadata.allow-direct-references = true
 
 [tool.uv]
-managed = true
 dev-dependencies = [
   "pudb>=2024.1.3",
-  "pytest>=8.3.3",
   "pytest-benchmark>=4.0.0",
+  "pytest>=8.3.3",
 ]
+managed = true
