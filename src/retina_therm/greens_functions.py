@@ -19,7 +19,7 @@ class LargeBeamAbsorbingLayerGreensFunction:
         if type(config) == dict:
             config = LargeBeamAbsorbingLayerGreensFunctionConfig(**config)
 
-        self.mua = config.absorption_coeffcient
+        self.mua = config.absorption_coefficient
         self.k = config.k
         self.rho = config.rho
         self.c = config.c
@@ -298,7 +298,7 @@ class MultiLayerGreensFunction:
             self.layers.append(G)
 
             # Need to reduce the incident irradiance according to Beer's Law
-            mua = layer.absorption_coeffcient
+            mua = layer.absorption_coefficient
             d = layer.thickness
 
             if not self.with_units:

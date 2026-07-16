@@ -52,8 +52,8 @@ QuantityWithUnit = lambda U, names=None, desc=None: Annotated[
 class LayerConfig(BaseModel):
     thickness: QuantityWithUnit("cm", names=["thickness", "d"])
     position: QuantityWithUnit("cm", names=["position", "z0"])
-    absorption_coeffcient: QuantityWithUnit(
-        "1/cm", names=["absorption_coeffcient", "mua"]
+    absorption_coefficient: QuantityWithUnit(
+        "1/cm", names=["absorption_coefficient", "mua"]
     )
 
 

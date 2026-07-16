@@ -13,7 +13,7 @@ def test_layer_schema():
 
     assert layer.thickness.magnitude == pytest.approx(1e-4)
     assert layer.position.magnitude == pytest.approx(0.001)
-    assert layer.absorption_coeffcient.magnitude == pytest.approx(310)
+    assert layer.absorption_coefficient.magnitude == pytest.approx(310)
 
     # print(layer.model_dump())
 
@@ -110,7 +110,7 @@ def test_MultiLayerGreensFunctionConfig():
     layer_config = LayerConfig(**{"d": "100 um", "z0": "10 um", "mua": "300 1/cm"})
     assert layer_config.thickness.magnitude == pytest.approx(100e-4)
     assert layer_config.position.magnitude == pytest.approx(10e-4)
-    assert layer_config.absorption_coeffcient.magnitude == pytest.approx(300)
+    assert layer_config.absorption_coefficient.magnitude == pytest.approx(300)
 
     config = MultiLayerGreensFunctionConfig(
         **{
@@ -180,8 +180,8 @@ one_over_e_radius: 3 mm
         **yaml.safe_load(config_text)
     )
 
-    assert config.absorption_coeffcient.magnitude == pytest.approx(100)
-    assert config.absorption_coeffcient.units == Q_("1 1/cm").units
+    assert config.absorption_coefficient.magnitude == pytest.approx(100)
+    assert config.absorption_coefficient.units == Q_("1 1/cm").units
 
     assert config.rho.magnitude == pytest.approx(
         Q_(1, "kg/m^3").to("g/cm/cm/cm").magnitude
