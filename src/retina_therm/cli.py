@@ -817,7 +817,7 @@ class TruncateTemperatureProfileProcess(parallel_jobs.JobProcessorBase):
 @app.command()
 def truncate_temperature_history_file(
     temperature_history_file: List[Path],
-    njobs: Annotated[str, typer.Option(help="Number of parallel jobs to run.")] = None,
+    njobs: Annotated[int, typer.Option(help="Number of parallel jobs to run.")] = None,
     threshold: Annotated[
         str,
         typer.Option(
