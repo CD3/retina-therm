@@ -400,17 +400,16 @@ def temperature_rise(
     # determine how to split up work.
     # we have a TemperatureRiseSingleConfigProcess that runs a single simulation.
     # internally, it will split the work up into chunks and use subprocesses to do the computation.
+    # the number of main jobs is capped at the total number of jobs so that large
+    # batches don't spawn one process per configuration.
     num_jobs = multiprocessing.cpu_count()
-    num_main_jobs = len(configs)
-    num_sub_jobs = int(num_jobs / num_main_jobs)
-
-    if njobs is not None:
-        if ":" in njobs:
-            num_main_jobs, num_sub_jobs = list(map(int, njobs.split(":")))
-        else:
+    if njobs is not None and ":" in njobs:
+        num_main_jobs, num_sub_jobs = list(map(int, njobs.split(":")))
+    else:
+        if njobs is not None:
             num_jobs = int(njobs)
-            num_main_jobs = len(configs)
-            num_sub_jobs = int(num_jobs / num_main_jobs)
+        num_main_jobs = max(1, min(num_jobs, len(configs)))
+        num_sub_jobs = max(1, num_jobs // num_main_jobs)
 
     controller = parallel_jobs.BatchJobController(
         TemperatureRiseSingleConfigProcess,
