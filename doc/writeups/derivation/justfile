@@ -1,8 +1,5 @@
 build:
-    arara 2023-GreensFunctionSolutionForRetinaLaserExposure.tex
+    tectonic 2023-GreensFunctionSolutionForRetinaLaserExposure.tex
 
 view:
-  #! /usr/bin/env python
-  from pathlib import Path
-  from subprocess import Popen as run
-  run(['zathura','2023-GreensFunctionSolutionForRetinaLaserExposure.pdf'])
+    zathura ./2023-GreensFunctionSolutionForRetinaLaserExposure.pdf &

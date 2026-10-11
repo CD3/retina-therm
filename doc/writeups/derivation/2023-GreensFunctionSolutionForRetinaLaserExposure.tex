@@ -137,6 +137,25 @@ For a Gaussian beam we have
   \dd t'
 \end{align}
 
+\textbf{NOTE:}
+
+The factor of two in the denominator out front looks odd, but it is correct.
+For a short pulse, short enough that heat does not have time to conduct out of the absorption volume
+before the end of the pulse, we would expect the temperature rise to be
+$$
+T(r=0,z=z_0 + d/2,t=\tau) = \frac{\mu_a E_0 \tau}{\rho c} =  \frac{\mu_a H_0}{\rho c}
+$$
+It looks like we will get half of this. However, for $t' << 1$, the error functions terms will approach $\pm 1$.
+$$
+  \lim_{t'\rightarrow 0} \erf\qty(\frac{d/2}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) \rightarrow 1
+$$
+$$
+  \lim_{t'\rightarrow 0} \erf\qty(\frac{-d/2}{\sqrt{4\alpha t'}} + \sqrt{\alpha t'}\mu_a ) \rightarrow -1
+$$
+so that when the second is subtracted from the first we get a factor of 2.
+
+Note that we do have to be in the center of the absorbing layer for this to happen, probably because at the surface there is a \emph{very}
+sharp thermal gradient (zero aborption on top of the layer) so heat conducts out \emph{instantaneously}.
 
 \subsection{Approximations}
 
