@@ -6,3 +6,4 @@ dist
 workspace/
 doc/examples/mainster-output
 uv.lock
+/doc/examples/schulmeister-action-spectrum/output/CW
