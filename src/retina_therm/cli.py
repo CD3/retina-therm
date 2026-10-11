@@ -69,6 +69,26 @@ def main(
     pass
 
 
+def compute_job_split(njobs, num_configs, cpu_count):
+    """
+    Determine how many main jobs (one config each) and sub jobs (per main job) to run.
+
+    `njobs` is the --njobs option string: None, "N", or "A:B" (A main jobs, B sub jobs each).
+    The number of main jobs is capped at the total number of jobs so that large
+    batches don't spawn one process per configuration.
+
+    Returns (num_main_jobs, num_sub_jobs).
+    """
+    if njobs is not None and ":" in njobs:
+        num_main_jobs, num_sub_jobs = list(map(int, njobs.split(":")))
+        return num_main_jobs, num_sub_jobs
+
+    num_jobs = cpu_count if njobs is None else int(njobs)
+    num_main_jobs = max(1, min(num_jobs, num_configs))
+    num_sub_jobs = max(1, num_jobs // num_main_jobs)
+    return num_main_jobs, num_sub_jobs
+
+
 def compute_evaluation_times(config):
     # if times are given in the config, just them
     if "ts" in config:
@@ -400,16 +420,9 @@ def temperature_rise(
     # determine how to split up work.
     # we have a TemperatureRiseSingleConfigProcess that runs a single simulation.
     # internally, it will split the work up into chunks and use subprocesses to do the computation.
-    # the number of main jobs is capped at the total number of jobs so that large
-    # batches don't spawn one process per configuration.
-    num_jobs = multiprocessing.cpu_count()
-    if njobs is not None and ":" in njobs:
-        num_main_jobs, num_sub_jobs = list(map(int, njobs.split(":")))
-    else:
-        if njobs is not None:
-            num_jobs = int(njobs)
-        num_main_jobs = max(1, min(num_jobs, len(configs)))
-        num_sub_jobs = max(1, num_jobs // num_main_jobs)
+    num_main_jobs, num_sub_jobs = compute_job_split(
+        njobs, len(configs), multiprocessing.cpu_count()
+    )
 
     controller = parallel_jobs.BatchJobController(
         TemperatureRiseSingleConfigProcess,
