@@ -7,3 +7,7 @@ workspace/
 doc/examples/mainster-output
 uv.lock
 /doc/examples/schulmeister-action-spectrum/output/CW
+# written by tests
+/Tvst.txt
+/Tvsz.txt
+/Tvsz-exact_vs_approx.txt
